@@ -95,7 +95,7 @@ def differentiate(U, V, W, S):
         tau_wn = H(U - u_w) * (tau_wn2 - tau_wn1) + tau_wn1
         dW = G(U - u_c) * (1 + (-W)) / tau_wn + H(U - u_c) * (-W / tau_wp)
         r_s = H(U - u_c) * (r_sp - r_sn) + r_sn
-        dS = r_s * (0.5 * (1 + tf.tanh((U - u_csi) * k_)) - S)
+        dS = r_s * (0.5 * (1 + tf.tanh((U - u_csi) * k_)) + (-S))
 
     return dU, dV, dW, dS
 
@@ -167,7 +167,7 @@ def define_model(N, M):
             U.assign(U0 + dt * dU + 0.5 * dt * dt * (Juu[0] + Juw[0]) + diff * dt * laplace(U0)),
             V.assign_add(dt * dV + 0.5 * dt * dt * (Jvu[0] + Jvv[0])),
             W.assign_add(dt * dW + 0.5 * dt * dt * (Jwu[0] + Jww[0])),
-            S.assign_add(dt * dS + 0.5 * dt * dt * Jsu[0]))
+            S.assign_add(dt * dS + 0.5 * dt * dt * (Jsu[0] + Jss[0])))
 
 
         # Operation to update the state
