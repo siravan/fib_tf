@@ -1,73 +1,53 @@
 #!/home/shahriar/anaconda3/bin/python
-"""
-    A TensorFlow-based 2D Cardiac Electrophysiology Modeler
-    @2017 Shahriar Iravanian (siravan@emory.edu)
-"""
-
-import numpy as np
-import time
 import tensorflow as tf
-from tensorflow.python.client import timeline
-import screen as sc
+import numpy as np
+from screen import Screen
+from ionic import IonicModel
 
-def make_kernel(a):
-    """Transform a 2D array into a convolution kernel"""
-    a = np.asarray(a)
-    a = a.reshape(list(a.shape) + [1,1])
-    return tf.constant(a, dtype=tf.float32)
-
-def simple_conv(x, k):
-    """A simplified 2D convolution operation"""
-    x = tf.expand_dims(tf.expand_dims(x, 0), -1)
-    y = tf.nn.depthwise_conv2d(x, k, [1, 1, 1, 1], padding='SAME')
-    return y[0, :, :, 0]
-
-def laplace(x):
-    """Compute the 2D laplacian of an array"""
-    laplace_k = make_kernel([[0.5, 1.0, 0.5],
-                            [1.0, -6., 1.0],
-                            [0.5, 1.0, 0.5]])
-    return simple_conv(x, laplace_k)
-
-# constants for the Fenton 4v left atrial action potential model
-tau_vp = 3.33
-tau_vn1 = 19.2
-tau_vn = tau_vn1
-tau_wp = 160.0
-tau_wn1 = 75.0
-tau_wn2 = 75.0
-tau_d = 0.065
-tau_si = 31.8364
-tau_so = tau_si
-tau_0 = 39.0
-tau_a = 0.009
-u_c = 0.23
-u_w = 0.146
-u_0 = 0.0
-u_m = 1.0
-u_csi = 0.8
-u_so = 0.3
-r_sp = 0.02
-r_sn = 1.2
-k_ = 3.0
-a_so = 0.115
-b_so = 0.84
-c_so = 0.02
+class Fenton4v(IonicModel):
+    def __init__(self, props):
+        IonicModel.__init__(self, props)
 
 
-def H(x):
-    """ the step function """
-    # return tf.sigmoid(x * 1000)
-    return (tf.sign(x) + 1) * 0.5
+    def differentiate(self, U, V, W, S):
+        """ the state differentiation for the 4v model """
+        # constants for the Fenton 4v left atrial action potential model
+        tau_vp = 3.33
+        tau_vn1 = 19.2
+        tau_vn = tau_vn1
+        tau_wp = 160.0
+        tau_wn1 = 75.0
+        tau_wn2 = 75.0
+        tau_d = 0.065
+        tau_si = 31.8364
+        tau_so = tau_si
+        tau_0 = 39.0
+        tau_a = 0.009
+        u_c = 0.23
+        u_w = 0.146
+        u_0 = 0.0
+        u_m = 1.0
+        u_csi = 0.8
+        u_so = 0.3
+        r_sp = 0.02
+        r_sn = 1.2
+        k_ = 3.0
+        a_so = 0.115
+        b_so = 0.84
+        c_so = 0.02
 
-def differentiate(U, V, W, S):
-    """ the state differentiation for the 4v model """
-    jit_scope = tf.contrib.compiler.jit.experimental_jit_scope
-    with jit_scope():
+        def H(x):
+            """ the step function """
+            return (1 + tf.sign(x)) * 0.5
+
+        def G(x):
+            """ the step function """
+            return (1 - tf.sign(x)) * 0.5
+
         I_fi = -V * H(U - u_c) * (U - u_c) * (u_m - U) / tau_d
         I_si = -W * S / tau_si
         I_so = (0.5 * (a_so - tau_a) * (1 + tf.tanh((U - b_so) / c_so)) +
-               (U - u_0) * (1 - H(U - u_so)) / tau_so + H(U - u_so) * tau_a)
+               (U - u_0) * G(U - u_so) / tau_so + H(U - u_so) * tau_a)
 
         dU = -(I_fi + I_si + I_so)
         dV = tf.where(U > u_c, -V / tau_vp, (1 - V) / tau_vn)
@@ -75,127 +55,87 @@ def differentiate(U, V, W, S):
         r_s = (r_sp - r_sn) * H(U - u_c) + r_sn
         dS = r_s * (0.5 * (1 + tf.tanh((U - u_csi) * k_)) - S)
 
-    return dU, dV, dW, dS
-
-def define_model(N, M):
-    """
-        Create a tensorflow graph to run the Fenton 4v model
-
-        Args:
-            N: height (pixels)
-            M: width (pixels)
-
-        Returns:
-            A model dict
-    """
-    # the initial values of the state variables
-    u_init = np.zeros([N, M], dtype=np.float32)
-    v_init = np.ones([N, M], dtype=np.float32)
-    w_init = np.ones([N, M], dtype=np.float32)
-    s_init = np.zeros([N, M], dtype=np.float32)
-
-    # S1 stimulation: vertical along the left side
-    u_init[:,1] = 1.0
-
-    # prepare for S2 stimulation as part of the cross-stimulation protocol
-    s2 = np.zeros([N, M], dtype=np.float32)
-    s2[:N//2, :N//2] = 1.0
-
-    # define the graph...
-    with tf.device('/device:GPU:0'):
-        diff = tf.placeholder(tf.float32, shape=())     # the diffusion coefficient
-        dt = tf.placeholder(tf.float32, shape=())       # the integration time-step in ms
-
-        # Create variables for simulation state
-        U  = tf.Variable(u_init)
-        V  = tf.Variable(v_init)
-        W  = tf.Variable(w_init)
-        S  = tf.Variable(s_init)
-
-        # enforcing the no-flux boundary condition
-        paddings = tf.constant([[1,1], [1,1]])
-        U0 = tf.pad(U[1:-1,1:-1], paddings, 'SYMMETRIC')
-        # U0 = tf.pad(U[1:-1,1:-1], paddings, 'REFLECT')
-
-        # Explicit Euler integration
-        dU, dV, dW, dS = differentiate(U0, V, W, S)
-
-        # Operation to update the state
-        ode_op = tf.group(
-          U.assign(U0 + dt * dU + diff * dt * laplace(U0)),
-          V.assign_add(dt * dV),
-          W.assign_add(dt * dW),
-          S.assign_add(dt * dS))
-
-        # Operation for S2 stimulation
-        s2_op = U.assign(tf.maximum(U, s2))
-
-        return {'height': N, 'width': M, 'U': U, 'V': V, 'W': W, 'S': S,
-                'ode_op': ode_op, 's2_op': s2_op, 'diff': diff, 'dt': dt}
+        return dU, dV, dW, dS
 
 
-def run(model, samples=10000, s2_time=2000, diff=1.5, dt=0.1):
-    """
-        Runs the model
+    def solve(self, U, V, W, S, U0):
+        """ Explicit Euler ODE solver """
+        jit_scope = tf.contrib.compiler.jit.experimental_jit_scope
+        with jit_scope():
+            dU, dV, dW, dS = self.differentiate(U, V, W, S)
 
-        Args:
-            model: A model dict as returned by define_model
-            samples: number of sample points
-            s2_time: time for firing S2 in the cross-stimulation protocol (in dt unit)
-            diff: the diffusion coefficient
-            dt: the integration time step in ms
+            U1 = U0 + self.dt * dU + self.diff * self.dt * self.laplace(U0)
+            V1 = V + self.dt * dV
+            W1 = W + self.dt * dW
+            S1 = S + self.dt * dS
 
-        Returns:
-            None
-    """
-    feed_dict = {model['diff']: diff, model['dt']: dt}
+            return tf.group(
+                U.assign(U1),
+                V.assign(V1),
+                W.assign(W1),
+                S.assign(S1)
+                )
 
-    # the painting canvas
-    im = sc.Screen(model['height'], model['width'], '4v Model')
+    def define(self):
+        """
+            Create a tensorflow graph to run the Fenton 4v model
 
-    # unpack the model
-    ode_op = model['ode_op']
-    s2_op = model['s2_op']
-    U = model['U']
+            Args:
+                N: height (pixels)
+                M: width (pixels)
 
-    # options and run_metadata are needed for tracing
-    options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
+            Returns:
+                A model dict
+        """
+        # the initial values of the state variables
+        u_init = np.zeros([self.height, self.width], dtype=np.float32)
+        v_init = np.ones([self.height, self.width], dtype=np.float32)
+        w_init = np.ones([self.height, self.width], dtype=np.float32)
+        s_init = np.zeros([self.height, self.width], dtype=np.float32)
 
-    config = tf.ConfigProto()
-    # config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+        # S1 stimulation: vertical along the left side
+        u_init[:,1] = 1.0
 
-    # start the timer
-    then = time.time()
+        # prepare for S2 stimulation as part of the cross-stimulation protocol
+        s2 = np.zeros([self.height, self.width], dtype=np.float32)
+        s2[:self.height//2, :self.width//2] = 1.0
 
-    with tf.Session(config=config) as sess:
-        # Initialize state to initial conditions
-        tf.global_variables_initializer().run()
+        # define the graph...
+        with tf.device('/device:GPU:0'):
+            # Create variables for simulation state
+            U  = tf.Variable(u_init, name='U')
+            V  = tf.Variable(v_init, name='V')
+            W  = tf.Variable(w_init, name='W')
+            S  = tf.Variable(s_init, name='S')
 
-        # the main loop!
-        for i in range(samples):
-            if i < samples-1:
-                sess.run(ode_op, feed_dict=feed_dict)
-            else:   # the last loop, save tracing data
-                sess.run(ode_op, feed_dict=feed_dict,
-                        options=options, run_metadata=run_metadata)
-                # Create the Timeline object for the last iteration
-                fetched_timeline = timeline.Timeline(run_metadata.step_stats)
-                chrome_trace = fetched_timeline.generate_chrome_trace_format()
-                with open('timeline.json', 'w') as f:
-                    f.write(chrome_trace)
+            # enforcing the no-flux boundary condition
+            paddings = tf.constant([[1,1], [1,1]])
+            U0 = tf.pad(U[1:-1,1:-1], paddings, 'SYMMETRIC', name='U0')
 
-            # fire S2
-            if i == s2_time:
-                sess.run(s2_op)
-            # draw a frame every 1 ms
-            if i % 10 == 0:
-                im.imshow(U.eval())
+            self.ode_op = self.solve(U, V, W, S, U0)
 
-    print('elapsed: %f sec' % (time.time() - then))
-    im.wait()   # wait until the window is closed
+            # Operation for S2 stimulation
+            self.s2_op = U.assign(tf.maximum(U, s2))
+            self.U = U
 
+    def normalized_vlt(self):
+        return self.U.eval()
 
 if __name__ == '__main__':
-    model = define_model(500, 500)
-    run(model, samples=20000)
+
+    props = {
+        'width': 512,
+        'height': 512,
+        'dt': 0.1,
+        'diff': 1.5,
+        'samples': 20000,
+        's2_time': 2100,
+        'cheby': True,
+        'timeline': False,
+        'timeline_name': 'timeline_4v.json',
+        'save_graph': False
+    }
+    model = Fenton4v(props)
+    model.define()
+    im = Screen(model.height, model.width, 'Fenton 4v Model')
+    model.run(im)
