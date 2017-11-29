@@ -9,7 +9,7 @@ import numpy as np
 from screen import Screen
 from ionic import IonicModel
 
-class BeelerReuter(IonicModel):
+class BeelerReuter_MultiRate(IonicModel):
     """
         The modified 8-variable Beeler-Reuter model:
 
@@ -268,7 +268,7 @@ if __name__ == '__main__':
         'fast_slow_ratio': 10
     }
 
-    model = BeelerReuter(props)
+    model = BeelerReuter_MultiRate(props)
     model.define()
     im = Screen(model.height, model.width, 'Beeler-Reuter Model')
     model.run(im)
