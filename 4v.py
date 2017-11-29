@@ -1,10 +1,23 @@
 #!/home/shahriar/anaconda3/bin/python
+"""
+    A TensorFlow-based 2D Cardiac Electrophysiology Modeler
+    @2017 Shahriar Iravanian (siravan@emory.edu)
+"""
+
 import tensorflow as tf
 import numpy as np
 from screen import Screen
 from ionic import IonicModel
 
 class Fenton4v(IonicModel):
+    """
+        The Cherry-Ehrlich-Nattel-Fenton (4v) canine left-atrial model
+
+        Cherry EM, Ehrlich JR, Nattel S, Fenton FH. Pulmonary vein reentry--
+        properties and size matter: insights from a computational analysis.
+        Heart Rhythm. 2007 Dec;4(12):1553-62.
+    """
+
     def __init__(self, props):
         IonicModel.__init__(self, props)
 
@@ -60,8 +73,7 @@ class Fenton4v(IonicModel):
 
     def solve(self, U, V, W, S, U0):
         """ Explicit Euler ODE solver """
-        jit_scope = tf.contrib.compiler.jit.experimental_jit_scope
-        with jit_scope():
+        with self.jit_scope():
             dU, dV, dW, dS = self.differentiate(U, V, W, S)
 
             U1 = U0 + self.dt * dU + self.diff * self.dt * self.laplace(U0)
@@ -79,13 +91,6 @@ class Fenton4v(IonicModel):
     def define(self):
         """
             Create a tensorflow graph to run the Fenton 4v model
-
-            Args:
-                N: height (pixels)
-                M: width (pixels)
-
-            Returns:
-                A model dict
         """
         # the initial values of the state variables
         u_init = np.zeros([self.height, self.width], dtype=np.float32)
@@ -108,18 +113,14 @@ class Fenton4v(IonicModel):
             W  = tf.Variable(w_init, name='W')
             S  = tf.Variable(s_init, name='S')
 
-            # enforcing the no-flux boundary condition
-            paddings = tf.constant([[1,1], [1,1]])
-            U0 = tf.pad(U[1:-1,1:-1], paddings, 'SYMMETRIC', name='U0')
-
-            self.ode_op = self.solve(U, V, W, S, U0)
+            self._ode_op = self.solve(U, V, W, S, self.enforce_boundary(U))
 
             # Operation for S2 stimulation
-            self.s2_op = U.assign(tf.maximum(U, s2))
-            self.U = U
+            self._s2_op = U.assign(tf.maximum(U, s2))
+            self._U = U
 
-    def normalized_vlt(self):
-        return self.U.eval()
+    def image(self):
+        return self._U.eval()
 
 if __name__ == '__main__':
 

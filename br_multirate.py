@@ -77,7 +77,9 @@ class BeelerReuter(IonicModel):
 
             state = [V, C, M, H, J, D, F, XI]
 
-            self._ode_op = self.solve(state, self.enforce_boundary(V))
+            fast, slow = self.solve(state, self.enforce_boundary(V))
+            self._ode_fast_op = fast
+            self._ode_slow_op = slow
 
             # Operation for S2 stimulation
             self._s2_op = V.assign(tf.maximum(V, s2))
@@ -134,12 +136,13 @@ class BeelerReuter(IonicModel):
 
 
             dt = self.dt
-            XI1 = self.rush_larsen(XI, xi_inf, xi_tau, dt, name='XI1')
+            dt_slow = dt * 10
+            XI1 = self.rush_larsen(XI, xi_inf, xi_tau, dt_slow, name='XI1')
             M1 = self.rush_larsen(M, m_inf, m_tau, dt, name='M1')
             H1 = self.rush_larsen(H, h_inf, h_tau, dt, name='H1')
-            J1 = self.rush_larsen(J, j_inf, j_tau, dt, name='J1')
-            D1 = self.rush_larsen(D, d_inf, d_tau, dt, name='D1')
-            F1 = self.rush_larsen(F, f_inf, f_tau, dt, name='F1')
+            J1 = self.rush_larsen(J, j_inf, j_tau, dt_slow, name='J1')
+            D1 = self.rush_larsen(D, d_inf, d_tau, dt_slow, name='D1')
+            F1 = self.rush_larsen(F, f_inf, f_tau, dt_slow, name='F1')
 
             # Current Multipliers
             C_K1 = 1.0
@@ -171,9 +174,15 @@ class BeelerReuter(IonicModel):
                     - dt * I_sum / C_m, -85.0, 25.0))
 
             dC = -1.0e-7*iCa + 0.07*(1.0e-7 - C)
-            C1 = C + dt * dC
+            C1 = C + dt_slow * dC
 
-            return tf.group(
+            fast = tf.group(
+                tf.assign(V, V1, name='set_V'),
+                tf.assign(M, M1, name='set_M'),
+                tf.assign(H, H1, name='set_H')
+                )
+
+            slow = tf.group(
                 tf.assign(V, V1, name='set_V'),
                 tf.assign(C, C1, name='set_C'),
                 tf.assign(M, M1, name='set_M'),
@@ -183,6 +192,8 @@ class BeelerReuter(IonicModel):
                 tf.assign(F, F1, name='set_F'),
                 tf.assign(XI, XI1, name='set_X')
                 )
+
+            return fast, slow
 
     def calc_alpha_bata_tf(self, v, c):
         """
@@ -253,7 +264,8 @@ if __name__ == '__main__':
         'cheby': True,
         'timeline': False,
         'timeline_name': 'timeline_br.json',
-        'save_graph': False
+        'save_graph': False,
+        'fast_slow_ratio': 10
     }
 
     model = BeelerReuter(props)
