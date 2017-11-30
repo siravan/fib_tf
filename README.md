@@ -30,10 +30,9 @@ It should be noted the Tensorflow installable come in different flavors. This so
 
 **Important**: The way Tensorflow works on GPU is to assign each operation to a CUDA kernel. This works well for machine learning, where each operation does lots of computation. But for solving systeoms of ODEs, most of calculations is not element-wise and we have many light operations. Under this condition, the overhead of kernel launches and data movement to and from the Global GPU memory causes a bottleneck. Fortunately, Tensorflow has an experimental [Just In Time (JIT) compiler](https://www.tensorflow.org/performance/xla/jit) that allows fusing multiple kernels into one. In our experient, enabling JIT makes the code 2-4 times faster. Unfortunatelly, this feature is still not availalbe in the stock versions of Tensorflow. To enable it, you need to compile Tensorflow from [source](https://www.tensorflow.org/install/install_sources).
 
-## Download
+# Download
 
-
-# Installation
+## Installation
 
 Download the software using
 
@@ -43,9 +42,17 @@ Next, run the models. You can run the Cherry-Ehrlich-Nattel-Fenton (4v) canine l
 
 `python3 4v.py`
 
-and the 8-variable modifed Beeler-Rwuter as
+and the 8-variable modifed Beeler-Reuter as
 
 `python3 br.py`
+
+# Files
+
+- screen.py: provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
+- dll.py: a helper file from PySDL2 to find and load the appropriate SDL2 library (libsdl2.so in linux).
+- ionic.py: contains the base class for implementing ionic models. 
+- 4v.py: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
+- br.py: implements the 8-variable modifed Beeler-Reuter.
 
 
 
