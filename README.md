@@ -40,12 +40,12 @@ and the 8-variable modified Beeler-Reuter as
 
 # Files
 
-- *screen.py*: provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
-- *dll.py*: a helper file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
-- *ionic.py*: contains the base class for implementing ionic models. 
-- *4v.py*: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
-- *br.py*: implements the 8-variable modified Beeler-Reuter.
-- *br_multirate.py*: an experimental implementation of the 8-variable modified Beeler-Reuter model with multirate integration. 
+- *screen.py:* provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
+- *dll.py:* a helper file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
+- *ionic.py:* contains the base class for implementing ionic models. 
+- *4v.py:* implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
+- *br.py:* implements the 8-variable modified Beeler-Reuter.
+- *br_multirate.py:* an experimental implementation of the 8-variable modified Beeler-Reuter model with multirate integration. 
 
 
 ---
