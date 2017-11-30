@@ -14,16 +14,20 @@ We are not only interested is solving the ionic current ODE for a single cell. T
 
 Programming GPUs (e.g., using C/C++ CUDA or OpenCL) is not a trivial task and is time-consuming and error-prone. This is where Tensorflow can be very useful. While it is not expected that Tensorflow beats a hand crafted optimized CUDA kernel, we hope to get reasonable performance. The goal of the current project is to verify this.
 
+## Quickstart
+
 # Requirements:
 
-  1. Python3
+  1. Python 3
   2. Numpy
   3. SDL2 (no need to PySDL2, just the basic SDL2 library)
   4. Tensorflow (of course!)
   
-We have tested the software on Ubuntu 14.04 and 16.04 machines with Tensorflow 1.4, and GTX 1080 or GTX Titan X GPUs (CUDA 8.0, CUDNN 7.0). It should be noted the Tensorflow installable come in different flavors. This software works on CPU only (after changing line with `tf.device('/device:GPU:0'):` to `tf.device('/device:CPU:0'):`), but it would be too slow. However, just having the GPU enabled version of Tensorflow is not enough. 
+We have tested the software on Ubuntu 14.04 and 16.04 machines with Tensorflow 1.4, Python 3.6, and GTX 1080 or GTX Titan X GPUs (CUDA 8.0, CUDNN 7.0). It should be noted the Tensorflow installable come in different flavors. This software would work on CPU only (after changing line with `tf.device('/device:GPU:0'):` to `tf.device('/device:CPU:0'):`), but it will be too slow. However, just having the GPU enabled version of Tensorflow is not enough. 
 
 **Important**: The way Tensorflow works on GPU is to assign each operation to a CUDA kernel. This works well for machine learning, where each operation does lots of computation. But for solving systeoms of ODEs, most of calculations is not element-wise and we have many light operations. Under this condition, the overhead of kernel launches and data movement to and from the Global GPU memory causes a bottleneck. Fortunately, Tensorflow has an experimental [Just In Time (JIT) compiler](https://www.tensorflow.org/performance/xla/jit) that allows fusing multiple kernels into one. In our experient, enabling JIT makes the code 2-4 times faster. Unfortunatelly, this feature is still not availalbe in the stock versions of Tensorflow. To enable it, you need to compile Tensorflow from [source](https://www.tensorflow.org/install/install_sources).
+
+# Installation
 
 
 
