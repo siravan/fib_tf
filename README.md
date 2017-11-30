@@ -24,6 +24,7 @@ We have tested the software on Ubuntu 14.04 and 16.04 machines with Tensorflow 1
   2. Numpy
   3. SDL2 (no need to PySDL2, just the basic SDL2 library)
   4. Tensorflow (of course!)
+  5. libcupti (optional, to profile the model)
 
 It should be noted the Tensorflow installable come in different flavors. This software would work on CPU only (after changing line with `tf.device('/device:GPU:0'):` to `tf.device('/device:CPU:0'):`), but it will be too slow. However, just having the GPU enabled version of Tensorflow is not enough. 
 
@@ -33,6 +34,20 @@ It should be noted the Tensorflow installable come in different flavors. This so
 
 
 # Installation
+
+Download the software using
+
+`git clone https://github.com/siravan/fib_tf.git`
+
+Next, run the models. You can run the Cherry-Ehrlich-Nattel-Fenton (4v) canine left-atrial model as
+
+`python3 4v.py`
+
+and the 8-variable modifed Beeler-Rwuter as
+
+`python3 br.py`
+
+
 
 
 
