@@ -16,7 +16,7 @@ We have tested the software on Ubuntu 14.04 and 16.04 machines with Tensorflow 1
 
   1. Python 3
   2. Numpy
-  3. SDL2 (no need to PySDL2, just the basic SDL2 library)
+  3. SDL2 (no need for PySDL2, just the basic SDL2 library). You can download it [here](https://wiki.libsdl.org/Installation).
   4. Tensorflow (of course!)
   5. libcupti (optional, to profile the model)
 
@@ -45,8 +45,10 @@ and the 8-variable modifed Beeler-Reuter as
 - ionic.py: contains the base class for implementing ionic models. 
 - 4v.py: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
 - br.py: implements the 8-variable modifed Beeler-Reuter.
+- br_multirate.py: an experimental implemention of the 8-variable modifed Beeler-Reuter model  with multirate integration. 
 
 
-
+---
+©2017 Shahriar Iravanian (siravan@emory.edu). 
 
 
