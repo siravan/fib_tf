@@ -11,8 +11,8 @@ import screen as sc
 
 
 class IonicModel:
-    def __init__(self, props):
-        for key, val in props.items():
+    def __init__(self, config):
+        for key, val in config.items():
             setattr(self, key, val)
 
     def laplace(self, X):
@@ -36,7 +36,7 @@ class IonicModel:
         return tf.clip_by_value(g_inf - (g_inf - g) * tf.exp(-dt/g_tau), 0.0,
                                 1.0, name=name)
 
-    def run(self, im):
+    def run(self, im=None):
         """
             Runs the model. The model should be defined first by calling
             self.define()
@@ -63,7 +63,7 @@ class IonicModel:
                 if i == self.s2_time:
                     sess.run(self.s2_op())
                 # draw a frame every 1 ms
-                if i % 10 == 0:
+                if im and i % self.dt_per_plot == 0:
                     im.imshow(self.image())
 
             if self.timeline:
@@ -75,11 +75,12 @@ class IonicModel:
                 # Create the Timeline object for the last iteration
                 fetched_timeline = timeline.Timeline(run_metadata.step_stats)
                 chrome_trace = fetched_timeline.generate_chrome_trace_format()
-                with open('timeline_br.json', 'w') as f:
+                with open(self.timeline_name, 'w') as f:
                     f.write(chrome_trace)
 
         print('elapsed: %f sec' % (time.time() - then))
-        im.wait()   # wait until the window is closed
+        if im:
+            im.wait()   # wait until the window is closed
 
     def define(self):
         """
@@ -98,6 +99,9 @@ class IonicModel:
         return None
 
     def ode_op(self, tick):
+        """
+            Returns the ODE operation for time tick (in dt unit)
+        """
         if hasattr(self, '_ode_op'):
             return self._ode_op
         elif tick % self.fast_slow_ratio == 0:
@@ -115,6 +119,10 @@ class IonicModel:
         return False
 
     def jit_scope(self):
+        """
+            Returns an XLA jit_scope if available; otherwise self is returned
+            and provides a dummy Context
+        """
         try:
             scope = tf.contrib.compiler.jit.experimental_jit_scope
         except:

@@ -71,8 +71,9 @@ class Fenton4v(IonicModel):
         return dU, dV, dW, dS
 
 
-    def solve(self, U, V, W, S, U0):
+    def solve(self, state, U0):
         """ Explicit Euler ODE solver """
+        U, V, W, S = state
         with self.jit_scope():
             dU, dV, dW, dS = self.differentiate(U, V, W, S)
 
@@ -81,12 +82,7 @@ class Fenton4v(IonicModel):
             W1 = W + self.dt * dW
             S1 = S + self.dt * dS
 
-            return tf.group(
-                U.assign(U1),
-                V.assign(V1),
-                W.assign(W1),
-                S.assign(S1)
-                )
+            return U1, V1, W1, S1
 
     def define(self):
         """
@@ -113,7 +109,21 @@ class Fenton4v(IonicModel):
             W  = tf.Variable(w_init, name='W')
             S  = tf.Variable(s_init, name='S')
 
-            self._ode_op = self.solve(U, V, W, S, self.enforce_boundary(U))
+            states = [[U, V, W, S]]
+            for i in range(10):
+                if i == 0:
+                    U0 = self.enforce_boundary(states[-1][0])
+                else:
+                    U0 = states[-1][0]
+                states.append(self.solve(states[-1], U0))
+            U1, V1, W1, S1 = states[-1]
+
+            self._ode_op = tf.group(
+                U.assign(U1),
+                V.assign(V1),
+                W.assign(W1),
+                S.assign(S1)
+                )
 
             # Operation for S2 stimulation
             self._s2_op = U.assign(tf.maximum(U, s2))
@@ -128,12 +138,12 @@ if __name__ == '__main__':
         'width': 512,
         'height': 512,
         'dt': 0.1,
-        'dt_per_plot' : 10,
+        'dt_per_plot' : 1,
         'diff': 1.5,
-        'samples': 20000,
-        's2_time': 2100,
+        'samples': 2000,
+        's2_time': 210,
         'cheby': True,
-        'timeline': False,
+        'timeline': True,
         'timeline_name': 'timeline_4v.json',
         'save_graph': False
     }

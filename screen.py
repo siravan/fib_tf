@@ -117,7 +117,7 @@ class Screen:
         self._DestroyRenderer(self._renderer)
         self._DestroyWindow(self._window)
 
-    def imshow(self, x):
+    def imshow(self, image):
         """
             Paints a numpy ndarray, which should be the same size as the Screen
 
@@ -131,17 +131,15 @@ class Screen:
             if x is a 3D array of float type, it is assumed to be color with
             red = x[:,:,0], green = x[:,:,1] and blue = x[:,:,2]
         """
-        assert(x.shape[0] == self._height and x.shape[1] == self._width)
-
-        if x.dtype == np.uint32 or x.dtype == np.int32:
-            a = x
-        elif x.dtype == np.float32 or x.dtype == np.float64:
-            if len(x.shape) == 2 or x.shape[2] == 1:
-                a = np.uint8(np.squeeze(x) * 255) * 0x010101
+        if image.dtype == np.uint32 or image.dtype == np.int32:
+            a = image
+        elif image.dtype == np.float32 or image.dtype == np.float64:
+            if len(image.shape) == 2 or image.shape[2] == 1:
+                a = np.uint8(np.squeeze(image) * 255) * 0x010101
             elif x.shape[2] == 3:
-                a = np.c_uint32(np.uint8(x[:,:,2]*255) +
-                                np.uint8(x[:,:,1]*255) * 256 +
-                                np.uint8(x[:,:,0]*255) * 65536)
+                a = np.c_uint32(np.uint8(image[:,:,2]*255) +
+                                np.uint8(image[:,:,1]*255) * 256 +
+                                np.uint8(image[:,:,0]*255) * 65536)
             else:
                 raise TypeError('float ndarrays to imshow should be of form MxNx1 or MxNx3')
         else:

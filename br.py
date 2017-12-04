@@ -102,7 +102,7 @@ class BeelerReuter(IonicModel):
                 # using T_0(x) = 1, T_1(x) = 2x, and the recurrence relationship
                 # T_n(x) = 2xT_{n-1} - T_{n-2}
                 # note: x ranges from -2 to 2 and is twice the actual Chebyshev input
-                x = (V0 - 0.5*(self.max_v+self.min_v)) / (0.25*(self.max_v-self.min_v))                
+                x = (V0 - 0.5*(self.max_v+self.min_v)) / (0.25*(self.max_v-self.min_v))
                 # T1x2 is T1 x 2
                 T1x2 = tf.identity(x, name='T1x2')
                 T2 = tf.subtract(0.5*T1x2*T1x2, 1.0, name='T2')
@@ -243,10 +243,11 @@ class BeelerReuter(IonicModel):
 
 
 if __name__ == '__main__':
-    props = {
+    config = {
         'width': 512,
         'height': 512,
         'dt': 0.1,
+        'dt_per_plot' : 10,
         'diff': 0.809,
         'samples': 20000,
         's2_time': 3000,
@@ -256,7 +257,8 @@ if __name__ == '__main__':
         'save_graph': False
     }
 
-    model = BeelerReuter(props)
+    model = BeelerReuter(config)
     model.define()
+    # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Beeler-Reuter Model')
     model.run(im)
