@@ -143,7 +143,7 @@ if __name__ == '__main__':
         'samples': 2000,
         's2_time': 210,
         'cheby': True,
-        'timeline': True,
+        'timeline': False,
         'timeline_name': 'timeline_4v.json',
         'save_graph': False
     }

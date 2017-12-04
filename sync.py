@@ -5,6 +5,7 @@
 """
 
 import time
+import json
 import tensorflow as tf
 import numpy as np
 from screen import Screen
@@ -85,7 +86,7 @@ class Fenton4v(IonicModel):
 
             return U1, V1, W1, S1
 
-    def define(self, s1=True):
+    def define(self, s1=True, link=None):
         """
             Create a tensorflow graph to run the Fenton 4v model
         """
@@ -102,10 +103,6 @@ class Fenton4v(IonicModel):
         # prepare for S2 stimulation as part of the cross-stimulation protocol
         s2 = np.zeros([self.height, self.width], dtype=np.float32)
         s2[:self.height//2, :self.width//2] = 1.0
-
-        #xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
-        #pace = (np.exp(-((xx - self.width/2)**2 + (yy - self.height/2)**2) / 5.0**2))
-        link = calc_link(20, self.width, self.height)
 
         # define the graph...
         with tf.device('/device:GPU:0'):
@@ -133,11 +130,41 @@ class Fenton4v(IonicModel):
 
             # Operation for S2 stimulation
             self._s2_op = U.assign(tf.maximum(U, s2))
-            self._pace_op = U.assign(tf.maximum(U, link))
             self._U = U
+            if link is not None:
+                self._pace_op = U.assign(tf.maximum(U, link))
 
     def image(self):
         return self._U.eval()
+
+    def create_pacer(self, n):
+        pacers = []
+        cc = []
+        U = self._U
+        with tf.device('/device:GPU:0'):
+            for i in range(n):
+                link, x, y = calc_link(1, self.width, self.height)
+                pacers.append(U.assign(tf.maximum(U, link)))
+                cc.append((x[0], y[0]))
+
+        self._pacers = pacers
+        self._cc = cc
+        self._pace_U = np.zeros(n, dtype=np.float32)
+
+    def fire_all(self, sess, no_pace=-1):
+        for i, op in enumerate(self._pacers):
+            if i != no_pace:
+                sess.run(op)
+
+    def detect(self, image):
+        b = -1
+        for i, c in enumerate(self._cc):
+            u0 = self._pace_U[i]
+            u1 = image[c[1], c[0]]
+            if u1 > 0.5 and u0 <= 0.5 and b==-1:
+                b = i
+            self._pace_U[i] = u1
+        return b
 
 def calc_link(n, width, height, sigma=5.0):
     xc = np.random.randint(width, size=(n))
@@ -147,23 +174,21 @@ def calc_link(n, width, height, sigma=5.0):
     for x, y in zip(xc, yc):
         ψ += (np.exp(-((xx - x)**2 + (yy - y)**2) / sigma**2))
     ψ = 0.5 * np.clip(ψ, 0, 1)
-    return ψ
+    return ψ, xc, yc
 
 def coupling_ops(U1, U0, link):
     lr = tf.assign(U1, U1 + link * (U0 - U1))
     rl = tf.assign(U0, U0 + link * (U1 - U0))
     return lr, rl
 
-def sync(m1, m2, lr=None, rl=None, im=None, num_tap=0):
+def sync(m1, m2, lr=None, rl=None, im=None, pace_cl=0, num_tap=0):
     with tf.Session() as sess:
         # start the timer
         then = time.time()
         tf.global_variables_initializer().run()
 
         samples = max(m1.samples, m2.samples)
-
-        u1 = []
-        u2 = []
+        when = samples
 
         if num_tap > 0:
             tap = np.random.randint(m1.width * m1.height, size=num_tap)
@@ -179,45 +204,51 @@ def sync(m1, m2, lr=None, rl=None, im=None, num_tap=0):
             if i == m2.s2_time:
                 sess.run(m2.s2_op())
 
-            if i > 2000 and i < 15000 and i % m1.dt_per_plot == 0:
-                if i & 1 == 0:
-                    sess.run(lr)
-                else:
-                    sess.run(rl)
-                #if i % 90 == 0:
-                #    sess.run(m2._pace_op)
-
             # draw a frame every 1 ms
-            if im and i % m1.dt_per_plot == 0:
+            if i % m1.dt_per_plot == 0:
                 image1 = m1.image()
                 image2 = m2.image()
-
+#
                 if num_tap > 0:
                     u1[i,:] = image1.ravel()[tap]
                     u2[i,:] = image2.ravel()[tap]
 
-                image = np.concatenate((image1, image2), axis=1)
-                im.imshow(image)
-                if i > 2000 and np.mean(image2) < 0.01:
+                if i > 5000 and i < 15000:
+                    if i & 1 == 0:
+                        if lr is not None:
+                            sess.run(lr)
+                    else:
+                        if rl is not None:
+                            sess.run(rl)
+                    if pace_cl > 0 and i % pace_cl == 0:
+                        sess.run(m2._pace_op)
+
+                if im:
+                    image = np.concatenate((image1, image2), axis=1)
+                    im.imshow(image)
+
+                if i > 500 and np.mean(image2) < 0.01:
+                    when = i
                     print('termination detected at %d' % i)
                     break
 
-    print('elapsed: %f sec' % (time.time() - then))
+    elapsed = time.time() - then
+    print('elapsed: %f sec' % elapsed)
     if im:
         im.wait()   # wait until the window is closed
-    return u1, u2
+    return elapsed, when, u1, u2
 
-if __name__ == '__main__':
+def run_once(plot=True, num_link=10, diff=2.0, pace=False):
     config = {
         'width': 400,
         'height': 400,
         'dt': 0.1,
         'dt_per_plot' : 1,
-        'diff': 1.5,
+        'diff': diff,
         'samples': 20000,
         's2_time': 200,
         'cheby': True,
-        'timeline': True,
+        'timeline': False,
         'timeline_name': 'timeline_4v.json',
         'save_graph': False
     }
@@ -227,12 +258,47 @@ if __name__ == '__main__':
     m1.s2_time = -1
     m2.diff = 0.5
 
+    link, xc, yc = calc_link(num_link, m1.width, m1.height)
+
     m1.define(False)
-    m2.define()
+    m2.define(link=link)
 
-
-    link = calc_link(3, m1.width, m1.height)
     lr, rl = coupling_ops(m1._U, m2._U, link)
+    #m2.create_pacer(7)
 
-    im = Screen(m1.height, 2*m1.width, 'Fenton 4v Model #1')
-    sync(m1, m2, lr, rl, im)
+    if plot:
+        im = Screen(m1.height, 2*m1.width, 'Fenton 4v Model #1')
+    else:
+        im = False
+
+    if pace:
+        elapsed, when, u1, u2 = sync(m1, m2, None, None, im, num_tap=10, pace_cl=90)
+    else:
+        elapsed, when, u1, u2 = sync(m1, m2, lr, rl, im, num_tap=10)
+
+    config['pace'] = pace
+    config['sync'] = not pace
+    config['num_link'] = num_link
+    config['elapsed'] = elapsed
+    config['when'] = when
+    if not pace:
+        config['u1'] = np.array(u1*1000, dtype=np.int).tolist()
+    config['u2'] = np.array(u2*1000, dtype=np.int).tolist()
+    return config
+
+if __name__ == '__main__':
+    path = '/home/shahriar/Dropbox/results/tf_sync/'
+    for i in range(5000):
+        num_link = np.random.randint(1, 20)
+        diff = np.random.random()*1.5 + 0.5
+        pace = np.random.random() > 0.5
+
+        config = run_once(plot=False, num_link=num_link, diff=diff, pace=pace)
+
+        if pace:
+            name = 'fopr_2Dxx0xx%13d.json' % (int(time.time()))
+        else:
+            name = 'ffsr_2Dxx0xx%13d.json' % (int(time.time()))
+
+        with open(path + name, 'w') as f:
+            json.dump(config, f, indent=4)
