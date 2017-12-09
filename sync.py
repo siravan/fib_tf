@@ -169,6 +169,7 @@ class Fenton4v(IonicModel):
 def calc_link(n, width, height, sigma=5.0):
     xc = np.random.randint(width, size=(n))
     yc = np.random.randint(height, size=(n))
+    # yc = np.full((n), height // 2, dtype=np.float32)
     xx, yy = np.meshgrid(np.arange(width), np.arange(height))
     ψ = np.zeros((height, width), dtype=np.float32)
     for x, y in zip(xc, yc):
@@ -213,6 +214,9 @@ def sync(m1, m2, lr=None, rl=None, im=None, pace_cl=0, num_tap=0):
                     u1[i,:] = image1.ravel()[tap]
                     u2[i,:] = image2.ravel()[tap]
 
+                if i == 1000:
+                    sess.run(m2.s2_op())
+
                 if i > 5000 and i < 15000:
                     if i & 1 == 0:
                         if lr is not None:
@@ -231,6 +235,8 @@ def sync(m1, m2, lr=None, rl=None, im=None, pace_cl=0, num_tap=0):
                     when = i
                     print('termination detected at %d' % i)
                     break
+        sess.close()
+        print(sess._closed)
 
     elapsed = time.time() - then
     print('elapsed: %f sec' % elapsed)
@@ -238,15 +244,20 @@ def sync(m1, m2, lr=None, rl=None, im=None, pace_cl=0, num_tap=0):
         im.wait()   # wait until the window is closed
     return elapsed, when, u1, u2
 
-def run_once(plot=True, num_link=10, diff=2.0, pace=False):
+def calc_cycle_length(x):
+    w = np.where((x[1:] >= 0.5) & (x[:-1] < 0.5))[0]
+    cl = w[1:] - w[:-1]
+    return cl
+
+def run_once(plot=True, num_link=10, diff=1.5, pace=False):
     config = {
         'width': 400,
         'height': 400,
         'dt': 0.1,
-        'dt_per_plot' : 1,
+        'dt_per_plot': 1,
         'diff': diff,
         'samples': 20000,
-        's2_time': 200,
+        's2_time': 250,
         'cheby': True,
         'timeline': False,
         'timeline_name': 'timeline_4v.json',
@@ -256,14 +267,21 @@ def run_once(plot=True, num_link=10, diff=2.0, pace=False):
     m2 = Fenton4v(config)
 
     m1.s2_time = -1
-    m2.diff = 0.5
+    m2.diff = 0.45 + 0.1 * np.random.random()  # 0.5
+    print('diff = %.5f' % m2.diff)
 
+    # link, xc, yc = calc_link(num_link, m1.width, m1.height)
     link, xc, yc = calc_link(num_link, m1.width, m1.height)
-
     m1.define(False)
     m2.define(link=link)
 
+
     lr, rl = coupling_ops(m1._U, m2._U, link)
+
+    # lr, _ = coupling_ops(m1._U, m2._U, link)
+    # link, xc, yc = calc_link(num_link, m1.width, m1.height)
+    # _, rl = coupling_ops(m1._U, m2._U, link)
+
     #m2.create_pacer(7)
 
     if plot:
@@ -282,23 +300,23 @@ def run_once(plot=True, num_link=10, diff=2.0, pace=False):
     config['elapsed'] = elapsed
     config['when'] = when
     if not pace:
-        config['u1'] = np.array(u1*1000, dtype=np.int).tolist()
-    config['u2'] = np.array(u2*1000, dtype=np.int).tolist()
+        config['u1'] = calc_cycle_length(u1[:,0]).tolist()
+    config['u2'] = calc_cycle_length(u2[:,0]).tolist()
     return config
 
 if __name__ == '__main__':
-    path = '/home/shahriar/Dropbox/results/tf_sync/'
-    for i in range(5000):
-        num_link = np.random.randint(1, 20)
-        diff = np.random.random()*1.5 + 0.5
-        pace = np.random.random() > 0.5
+    path = '/home/shahriar/Dropbox/results/tf_sync_2/'
 
-        config = run_once(plot=False, num_link=num_link, diff=diff, pace=pace)
+    num_link = np.random.randint(1, 20)
+    diff = np.random.random()*1.75 + 0.25
+    pace = np.random.random() > 0.8
 
-        if pace:
-            name = 'fopr_2Dxx0xx%13d.json' % (int(time.time()))
-        else:
-            name = 'ffsr_2Dxx0xx%13d.json' % (int(time.time()))
+    config = run_once(plot=False, num_link=num_link, diff=diff, pace=pace)
 
-        with open(path + name, 'w') as f:
-            json.dump(config, f, indent=4)
+    if pace:
+        name = 'fopr_2Dxx0xx%d.json' % (int(time.time()))
+    else:
+        name = 'ffsr_2Dxx0xx%d.json' % (int(time.time()))
+
+    with open(path + name, 'w') as f:
+        json.dump(config, f, indent=4)
