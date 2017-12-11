@@ -20,7 +20,8 @@ class Fenton4v(IonicModel):
 
     def __init__(self, props):
         IonicModel.__init__(self, props)
-
+        self.min_v = 0.0
+        self.max_v = 1.0
 
     def differentiate(self, U, V, W, S):
         """ the state differentiation for the 4v model """
@@ -112,11 +113,8 @@ class Fenton4v(IonicModel):
 
             states = [[U, V, W, S]]
             for i in range(10):
-                if i == 0:
-                    U0 = self.enforce_boundary(states[-1][0])
-                else:
-                    U0 = states[-1][0]
-                states.append(self.solve(states[-1], U0))
+                states.append(self.solve(states[-1],
+                              self.enforce_boundary(states[-1][0])))
             U1, V1, W1, S1 = states[-1]
 
             self._ode_op = tf.group(
@@ -129,6 +127,9 @@ class Fenton4v(IonicModel):
             # Operation for S2 stimulation
             self._s2_op = U.assign(tf.maximum(U, s2))
             self._U = U
+
+    def pot(self):
+        return self._U
 
     def image(self):
         return self._U.eval()

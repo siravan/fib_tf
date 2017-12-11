@@ -62,7 +62,9 @@ class BeelerReuter(IonicModel):
 
         # prepare for S2 stimulation as part of the cross-stimulation protocol
         s2 = np.full([self.height, self.width], self.min_v, dtype=np.float32)
-        s2[:self.height//2, :self.width//2] = 10.0
+        # s2[:self.height//2, :self.width//2] = 10.0
+        s2[:self.height//4, :self.width//2] = 10.0
+        s2[self.height//4*3:, :self.width//2] = 10.0
 
         # define the graph...
         with tf.device('/device:GPU:0'):
@@ -82,15 +84,15 @@ class BeelerReuter(IonicModel):
                 s = self.solve(states[0], self.enforce_boundary(states[0][0]), 10)
                 states.append(s)
                 for i in range(9):
-                    # V0 = self.enforce_boundary(states[-1][0])
-                    V0 = states[-1][0]
+                    V0 = self.enforce_boundary(states[-1][0])
+                    # V0 = states[-1][0]
                     states.append(self.solve(states[-1], V0, 0))
             else:
                 s = self.solve(states[0], self.enforce_boundary(states[0][0]), 1)
                 states.append(s)
                 for i in range(4):
-                    # V0 = self.enforce_boundary(states[-1][0])
-                    V0 = states[-1][0]
+                    V0 = self.enforce_boundary(states[-1][0])
+                    # V0 = states[-1][0]
                     states.append(self.solve(states[-1], V0, 1))
 
             V1, C1, M1, H1, J1, D1, F1, XI1 = states[-1]
@@ -270,7 +272,7 @@ if __name__ == '__main__':
             'dt': 0.1,
             'skip': True,
             'dt_per_plot': 1,
-            'diff': 0.809,
+            'diff': 2.0,
             'samples': 2000,
             's2_time': 300,
             'cheby': True,

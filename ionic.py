@@ -55,6 +55,7 @@ class IonicModel:
             # start the timer
             then = time.time()
             tf.global_variables_initializer().run()
+            vel_measured = False
 
             # the main loop!
             for i in range(self.samples):
@@ -64,7 +65,12 @@ class IonicModel:
                     sess.run(self.s2_op())
                 # draw a frame every 1 ms
                 if im and i % self.dt_per_plot == 0:
-                    im.imshow(self.image())
+                    image = self.image()
+                    im.imshow(image)
+                    if not vel_measured:
+                        if image[self.height//2, self.width-1] > 0.5:
+                            print('wavefront reaches the right border at %d' % i)
+                            vel_measured = True
 
             if self.timeline:
                 # options and run_metadata are needed for tracing
