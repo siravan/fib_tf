@@ -84,7 +84,7 @@ class Fenton4v(IonicModel):
 
             return U1, V1, W1, S1
 
-    def define(self):
+    def define(self, s1=True):
         """
             Create a tensorflow graph to run the Fenton 4v model
         """
@@ -95,7 +95,8 @@ class Fenton4v(IonicModel):
         s_init = np.zeros([self.height, self.width], dtype=np.float32)
 
         # S1 stimulation: vertical along the left side
-        u_init[:,1] = 1.0
+        if s1:
+            u_init[:,1] = 1.0
 
         # prepare for S2 stimulation as part of the cross-stimulation protocol
         s2 = np.zeros([self.height, self.width], dtype=np.float32)

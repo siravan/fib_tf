@@ -82,7 +82,7 @@ class IonicModel:
         if im:
             im.wait()   # wait until the window is closed
 
-    def define(self):
+    def define(self, s1=True):
         """
             A placeholder for a method to be defined in a subclass
             It should define the model and set self.ode_op and
@@ -96,7 +96,10 @@ class IonicModel:
             It should return a [height x width] float ndarray in the range 0 to 1
             that encodes the transmembrane potential in grayscale
         """
-        return None
+        pass
+
+    def pot(self):
+        pass
 
     def ode_op(self, tick):
         """

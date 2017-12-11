@@ -41,7 +41,7 @@ class BeelerReuter(IonicModel):
                  [2*0.0065, -0.02,  30.,    0.0,    0.0,    -0.2,   1.0]],  # cb_f
                 dtype=np.float32)
 
-    def define(self):
+    def define(self, s1=True):
         """
             Defines the tensorflow model
             It sets ode_op, s2_op and V used by other methods
@@ -57,7 +57,8 @@ class BeelerReuter(IonicModel):
         xi_init = np.full([self.height, self.width], 0.0001, dtype=np.float32)
 
         # S1 stimulation: vertical along the left side
-        v_init[:,1] = 10.0
+        if s1:
+            v_init[:,1] = 10.0
 
         # prepare for S2 stimulation as part of the cross-stimulation protocol
         s2 = np.full([self.height, self.width], self.min_v, dtype=np.float32)
