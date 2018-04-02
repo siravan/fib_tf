@@ -89,6 +89,7 @@ class Fenton4v(IonicModel):
         """
             Create a tensorflow graph to run the Fenton 4v model
         """
+        super().define()
         # the initial values of the state variables
         u_init = np.zeros([self.height, self.width], dtype=np.float32)
         v_init = np.ones([self.height, self.width], dtype=np.float32)
@@ -98,10 +99,6 @@ class Fenton4v(IonicModel):
         # S1 stimulation: vertical along the left side
         if s1:
             u_init[:,1] = 1.0
-
-        # prepare for S2 stimulation as part of the cross-stimulation protocol
-        s2 = np.zeros([self.height, self.width], dtype=np.float32)
-        s2[:self.height//2, :self.width//2] = 1.0
 
         # define the graph...
         with tf.device('/device:GPU:0'):
@@ -124,8 +121,6 @@ class Fenton4v(IonicModel):
                 S.assign(S1)
                 )
 
-            # Operation for S2 stimulation
-            self._s2_op = U.assign(tf.maximum(U, s2))
             self._U = U
 
     def pot(self):
@@ -142,15 +137,24 @@ if __name__ == '__main__':
         'dt': 0.1,
         'dt_per_plot' : 1,
         'diff': 1.5,
-        'samples': 2000,
-        's2_time': 210,
+        'samples': 10000,
+        # 's2_time': 210,
         'cheby': True,
         'timeline': False,
         'timeline_name': 'timeline_4v.json',
         'save_graph': False
     }
     model = Fenton4v(config)
+
+    model.add_hole_to_phase_field(256, 256, 50.0)
     model.define()
+    model.add_pace_op('s2', 'luq', 1.0)
+    model.add_pace_op('s3', 'right', 1.0)
     # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Fenton 4v Model')
-    model.run(im)
+
+    for t in model.run(im):
+        if t == 210:
+            model.fire_op('s2')
+        if t > 500 and t < 8000 and t % 100 == 0:
+            model.fire_op('s3')

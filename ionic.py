@@ -14,16 +14,56 @@ class IonicModel:
     def __init__(self, config):
         for key, val in config.items():
             setattr(self, key, val)
+        self.phase = None
+        self._ops = {}
+        self.defined = False
 
     def laplace(self, X):
         """
             Compute the 2D laplacian of an array directly and without using conv
+            it also adds the phase field correction if self.phase is defined
         """
         l = (X[:-2,1:-1] + X[2:,1:-1] + X[1:-1,:-2] + X[1:-1,2:] +
              0.5 * (X[:-2,:-2] + X[2:,:-2] + X[:-2,2:] + X[2:,2:]) -
              6 * X[1:-1,1:-1])
+
+        if self.phase is not None:
+            if not hasattr(self, 'ϕ'):
+                self.ϕ = tf.Variable(self.phase, name='phi')
+            l += self.phase_field(X)
+
         paddings = tf.constant([[1,1], [1,1]])
         return tf.pad(l, paddings, 'CONSTANT', name='laplacian')
+
+    def phase_field(self, X):
+        """
+            Compute the 2D phase field
+            it assumes self.ϕ exists and is the same shape as X
+        """
+        ϕ = self.ϕ
+        f = ((X[2:,1:-1] - X[:-2,1:-1]) * (ϕ[2:,1:-1] - ϕ[:-2,1:-1]) +
+             (X[1:-1,2:] - X[1:-1,:-2]) * (ϕ[1:-1,2:] - ϕ[1:-1:,:-2])
+             ) / (4 * ϕ[1:-1,1:-1])
+        return f
+
+    def add_hole_to_phase_field(self, x, y, radius):
+        """
+            adds a circular hole, centered at (x,y), to the phase field
+            it creates the phase field if it does not already exist
+
+            NOTE: this method should be called before calling define
+        """
+        if self.defined:
+            raise AssertionError('add_hole_to_phase_field should be called before calling define')
+
+        if self.phase is None:
+            self.phase = np.ones([self.height, self.width], dtype=np.float32)
+
+        xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
+        dist = np.hypot(xx - x, yy - y)
+        self.phase *= np.array(0.5*(np.tanh(dist - radius) + 1.0), dtype=np.float32)
+        # we set the minimum phase field at 1e-5 to avoid division by 0 in phase_field
+        self.phase = np.maximum(self.phase, 1e-5)
 
     def enforce_boundary(self, X):
         """
@@ -35,6 +75,42 @@ class IonicModel:
     def rush_larsen(self, g, g_inf, g_tau, dt, name=None):
         return tf.clip_by_value(g_inf - (g_inf - g) * tf.exp(-dt/g_tau), 0.0,
                                 1.0, name=name)
+
+    def add_pace_op(self, name, loc, v):
+        """
+            adds a pacemaker op to the list of operation
+            loc is one of 'left', 'right', 'top', 'bottom',
+            'luq' (left upper quadrant), 'llq' (left lower quadrant),
+            'ruq' (right upper quadrant), and 'rlq' (right lower quadrant)
+
+            NOTE: this method should be called after calling define
+        """
+        if not self.defined:
+            raise AssertionError('add_hole_to_phase_field should be called after calling define')
+
+        s = np.full([self.height, self.width], self.min_v, dtype=np.float32)
+        if loc == 'left':
+            s[:,:5] = v
+        elif loc == 'right':
+            s[:,-5:] = v
+        elif loc == 'top':
+            s[:5,:] = v
+        elif loc == 'bottom':
+            s[-5:,:] = v
+        elif loc == 'luq':
+            s[:self.height//2, :self.width//2] = v
+        elif loc == 'llq':
+            s[self.height//2:, :self.width//2] = v
+        elif loc == 'ruq':
+            s[:self.height//2, self.width//2:] = v
+        elif loc == 'rlq':
+            s[self.height//2:, self.width//2:] = v
+        else:
+            print('undefined pace location')
+        self._ops[name] = self.pot().assign(tf.maximum(self.pot(), s))
+
+    def fire_op(self, name):
+        self._sess.run(self._ops[name])
 
     def run(self, im=None):
         """
@@ -49,28 +125,31 @@ class IonicModel:
         """
 
         with tf.Session() as sess:
+            self._sess = sess
             if self.save_graph:
                 file_writer = tf.summary.FileWriter('logs', sess.graph)
 
             # start the timer
             then = time.time()
             tf.global_variables_initializer().run()
-            vel_measured = False
+            v0 = self.min_v
+            last_spike = 0
 
             # the main loop!
             for i in range(self.samples):
                 sess.run(self.ode_op(i))
-                # fire S2
-                if i == self.s2_time:
-                    sess.run(self.s2_op())
+                yield i
                 # draw a frame every 1 ms
                 if im and i % self.dt_per_plot == 0:
                     image = self.image()
+                    if self.phase is not None:
+                        image *= self.phase
                     im.imshow(image)
-                    if not vel_measured:
-                        if image[self.height//2, self.width-1] > 0.5:
-                            print('wavefront reaches the right border at %d' % i)
-                            vel_measured = True
+                    v1 = image[1, self.width//2]
+                    if v1 >= 0.5 and v0 < 0.5:
+                        print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, i - last_spike))
+                        last_spike = i
+                    v0 = v1
 
             if self.timeline:
                 # options and run_metadata are needed for tracing
@@ -94,7 +173,7 @@ class IonicModel:
             It should define the model and set self.ode_op and
             self.s2_op in addition to any state needed for self.image
         """
-        pass
+        self.defined = True
 
     def image(self):
         """

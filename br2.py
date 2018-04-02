@@ -19,7 +19,7 @@ class BeelerReuter(IonicModel):
     """
 
     def __init__(self, props):
-        IonicModel.__init__(self, props)
+        super().__init__(props)
         self.min_v = -90.0    # mV
         self.max_v = 30.0     # mV
 
@@ -46,6 +46,7 @@ class BeelerReuter(IonicModel):
             Defines the tensorflow model
             It sets ode_op, s2_op and V used by other methods
         """
+        super().define()
         # the initial values of the state variables
         v_init = np.full([self.height, self.width], -84.624, dtype=np.float32)
         c_init = np.full([self.height, self.width], 1e-4, dtype=np.float32)
@@ -59,12 +60,6 @@ class BeelerReuter(IonicModel):
         # S1 stimulation: vertical along the left side
         if s1:
             v_init[:,1] = 10.0
-
-        # prepare for S2 stimulation as part of the cross-stimulation protocol
-        s2 = np.full([self.height, self.width], self.min_v, dtype=np.float32)
-        # s2[:self.height//2, :self.width//2] = 10.0
-        s2[:self.height//4, :self.width//2] = 10.0
-        s2[self.height//4*3:, :self.width//2] = 10.0
 
         # define the graph...
         with tf.device('/device:GPU:0'):
@@ -108,8 +103,6 @@ class BeelerReuter(IonicModel):
                 tf.assign(XI, XI1, name='set_X')
                 )
 
-            # Operation for S2 stimulation
-            self._s2_op = V.assign(tf.maximum(V, s2))
             self._V = V  # V is needed by self.image()
 
 
@@ -265,16 +258,16 @@ class BeelerReuter(IonicModel):
 
 
 if __name__ == '__main__':
-    if True:
+    if False:
         config = {
             'width': 512,
             'height': 512,
             'dt': 0.1,
             'skip': True,
             'dt_per_plot': 1,
-            'diff': 2.0,
+            'diff': 1.0,
             'samples': 2000,
-            's2_time': 300,
+            # 's2_time': 300,
             'cheby': True,
             'timeline': False,
             'timeline_name': 'timeline_br.json',
@@ -282,14 +275,14 @@ if __name__ == '__main__':
         }
     else:
         config = {
-            'width': 512,
-            'height': 512,
+            'width': 400,
+            'height': 400,
             'dt': 0.1,
             'skip': False,
             'dt_per_plot': 2,
             'diff': 0.809,
-            'samples': 4000,
-            's2_time': 600,
+            'samples': 15000,
+            # 's2_time': 600,
             'cheby': True,
             'timeline': False,
             'timeline_name': 'timeline_br.json',
@@ -297,7 +290,15 @@ if __name__ == '__main__':
         }
 
     model = BeelerReuter(config)
+    model.add_hole_to_phase_field(150, 200, 40)
     model.define()
+    model.add_pace_op('s2', 'luq', 10.0)
+    model.add_pace_op('s3', 'right', 10.0)
     # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Beeler-Reuter Model')
-    model.run(im)
+    #model.run(im)
+    for t in model.run(im):
+        if t == 600:    # 300 ms
+            model.fire_op('s2')
+        if t > 2000 and t < 10000 and t % 340 == 0:
+            model.fire_op('s3')
