@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<style type="text/css">
+    .svtsim { font-variant: small-caps; }
+    #header {
+        background-color: #DDDDFF;
+        font-size: 18px;
+        width: 1050px;
+        padding: 10px;
+    }
+    p{
+        font-family:"sans-serif";
+    }
+    .header_text {color:#8888FF; padding:0px; margin:0px; }
+    .header_line {color:#2222FF;}
+    .tryit {border:2px solid black; width=80%; padding:5px; box-shadow: 10px 10px 5px #888888;}
+</style>
+<title>FIB_TF</title>
+</head>
+<body>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML' async></script>
+<div id="all" style="margin:80px; background-color:#FFFFFF;">
+<h2><span class='svtsim'>fib_tf</span>: A Tensorflow-based Cardiac Electrophysiology Modeling Framework</h3>
+<h3>Background</h3><hr>
+<p>
+<a href='https://www.tensorflow.org'>Tensorflow</a> is a machine-learning framework developed by Google and initially released publicly in 2015.
+Its website claims that "TensorFlow is a tool for machine learning. While it contains a wide range of functionality,
+TensorFlow is mainly designed for deep neural network models." Here, our goal is to test "a wide range of functionality" part of the claim.
+Specially, we want to test the suitability of Tensorflow in solving coupled systems of ordinary differential equations (ODE) that arise in modeling
+cardiac electrophysiology.
+
+<p>
+TensorFlow is primarily, but not exclusively, a machine learning framework. However, TensorFlow graphs are powerful
+models that can be useful in variety of non-machine learning applications. In fact, the TensorFlow website has an
+<a href='https://www.tensorflow.org/tutorials/pdes'>example</a> of solving a simple partial differential equation.
+This example was the starting point of the current project; albeit, in the end, only a tiny fraction of the its codes remained.
+
+<p>
+TensorFlow applications generally have two main stages. In the first stage, a TensorFlow graph is defined.
+A TensorFlow graph is a directed acyclic graph (with some exceptions to the acyclicity), where nodes correspond
+to tensors (multi-dimensional arrays) or operations on tensors, and links denote data movement among the nodes.
+
+<p>
+The main power of TensorFlow is the ability to run the model graphs on heterogeneous hardwares,
+including CPU, GPU, or even Google developed Tensor Processing Units (TPU).
+
+<h3>Introduction to <span class='svtsim'>fib_tf</span></h3><hr>
+<p>
+<span class='svtsim'>fib_tf</span> is a python framework developed on the top of TensorFlow for 2D cardiac
+electrophysiology simulation using explicit Euler method.
+<p>
+<span class='svtsim'>fib_tf</span> is designed to run the model on GPU.
+Explicit Cardiac electrophysiology models are particuarly suitable for running on GPU, as the main dependency between ODEs
+is through Laplacian, which is only a small fraction of the total computational cost.
+<p>
+Our goal is to optimize the <span class='svtsim'>fib_tf</span> code to make its running time close
+to a hand-optimized CUDA C++ code running the same model.
+<p>
+In this document, we first describe a straight forward translation of cardiac models into TensorFlow. We then explains
+variuos optimizing tricks needed to make <span class='svtsim'>fib_tf</span> performace acceptable (of course, it is still far
+from hand-optimized codes).
+
+<h3>Ionic Models</h3><hr>
+
+<h3></h3><hr>
+
+</div>
+</body>
