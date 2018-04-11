@@ -9,7 +9,6 @@ import tensorflow as tf
 from tensorflow.python.client import timeline
 import screen as sc
 
-
 class IonicModel:
     def __init__(self, config):
         for key, val in config.items():

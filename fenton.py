@@ -137,7 +137,7 @@ if __name__ == '__main__':
         'dt': 0.1,
         'dt_per_plot' : 1,
         'diff': 1.5,
-        'samples': 10000,
+        'samples': 1000,
         # 's2_time': 210,
         'cheby': True,
         'timeline': False,
@@ -146,15 +146,15 @@ if __name__ == '__main__':
     }
     model = Fenton4v(config)
 
-    model.add_hole_to_phase_field(256, 256, 50.0)
+    # model.add_hole_to_phase_field(256, 256, 50.0)
     model.define()
     model.add_pace_op('s2', 'luq', 1.0)
-    model.add_pace_op('s3', 'right', 1.0)
+    # model.add_pace_op('s3', 'right', 1.0)
     # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Fenton 4v Model')
 
     for t in model.run(im):
         if t == 210:
             model.fire_op('s2')
-        if t > 500 and t < 8000 and t % 100 == 0:
-            model.fire_op('s3')
+        # if t > 500 and t < 8000 and t % 100 == 0:
+        #    model.fire_op('s3')

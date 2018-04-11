@@ -26,10 +26,9 @@
 <h3>Background</h3><hr>
 <p>
 <a href='https://www.tensorflow.org'>Tensorflow</a> is a machine-learning framework developed by Google and initially released publicly in 2015.
-Its website claims that "TensorFlow is a tool for machine learning. While it contains a wide range of functionality,
-TensorFlow is mainly designed for deep neural network models." Here, our goal is to test "a wide range of functionality" part of the claim.
-Specially, we want to test the suitability of Tensorflow in solving coupled systems of ordinary differential equations (ODE) that arise in modeling
-cardiac electrophysiology.
+Based on its website, "TensorFlow is a tool for machine learning. While it contains a wide range of functionality,
+TensorFlow is mainly designed for deep neural network models." Here, our goal is to test the suitability of Tensorflow for solving coupled
+systems of ordinary differential equations (ODE) that arise in the numerical modeling of cardiac electrophysiology systems.
 
 <p>
 TensorFlow is primarily, but not exclusively, a machine learning framework. However, TensorFlow graphs are powerful
@@ -51,9 +50,9 @@ including CPU, GPU, or even Google developed Tensor Processing Units (TPU).
 <span class='svtsim'>fib_tf</span> is a python framework developed on the top of TensorFlow for 2D cardiac
 electrophysiology simulation using explicit Euler method.
 <p>
-<span class='svtsim'>fib_tf</span> is designed to run the model on GPU.
-Explicit Cardiac electrophysiology models are particuarly suitable for running on GPU, as the main dependency between ODEs
-is through Laplacian, which is only a small fraction of the total computational cost.
+<span class='svtsim'>fib_tf</span> is designed to run on GPU. Explicit Cardiac electrophysiology models are
+particuarly suitable for running on GPU, as the main dependency between ODEs is through Laplacian,
+which is only a small fraction of the total computational cost.
 <p>
 Our goal is to optimize the <span class='svtsim'>fib_tf</span> code to make its running time close
 to a hand-optimized CUDA C++ code running the same model.
@@ -61,6 +60,10 @@ to a hand-optimized CUDA C++ code running the same model.
 In this document, we first describe a straight forward translation of cardiac models into TensorFlow. We then explains
 variuos optimizing tricks needed to make <span class='svtsim'>fib_tf</span> performace acceptable (of course, it is still far
 from hand-optimized codes).
+
+<h3>A Simple 4v Solver</h3><hr>
+
+
 
 <h3>Ionic Models</h3><hr>
 
