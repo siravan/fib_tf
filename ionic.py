@@ -16,6 +16,7 @@ class IonicModel:
         self.phase = None
         self._ops = {}
         self.defined = False
+        self.dt_per_step = 1
 
     def laplace(self, X):
         """
@@ -133,20 +134,22 @@ class IonicModel:
             tf.global_variables_initializer().run()
             v0 = self.min_v
             last_spike = 0
+            samples = int(self.duration / (self.dt_per_step * self.dt))
 
             # the main loop!
-            for i in range(self.samples):
+            for i in range(samples):
                 sess.run(self.ode_op(i))
                 yield i
                 # draw a frame every 1 ms
-                if im and i % self.dt_per_plot == 0:
+                if im and i % (self.dt_per_plot / self.dt_per_step) == 0:
                     image = self.image()
                     if self.phase is not None:
                         image *= self.phase
                     im.imshow(image)
                     v1 = image[1, self.width//2]
                     if v1 >= 0.5 and v0 < 0.5:
-                        print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, i - last_spike))
+                        cl = (i - last_spike) * self.dt_per_step * self.dt
+                        print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, cl))
                         last_spike = i
                     v0 = v1
 

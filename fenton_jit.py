@@ -218,4 +218,5 @@ if __name__ == '__main__':
     model.define()
     # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Simple Fenton 4v Model')
+
     model.run(im)
