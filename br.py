@@ -205,7 +205,7 @@ class BeelerReuter(IonicModel):
         Ts = [T1x2, T2, T3, T4, T5, T6, T7, T8a]
 
         v, α, β = self.calc_alpha_beta_np()
-    
+
         m_inf = self.chebyshev_poly(Ts, v, α[:,1]/(α[:,1]+β[:,1]))
         h_inf = self.chebyshev_poly(Ts, v, α[:,2]/(α[:,2]+β[:,2]))
         m_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,1]+β[:,1]))
@@ -321,7 +321,8 @@ if __name__ == '__main__':
     model.add_pace_op('s3', 'right', 10.0)
 
     # note: change the following line to im = None to run without a screen
-    im = Screen(model.height, model.width, 'Beeler-Reuter Model')
+    im = None
+    # im = Screen(model.height, model.width, 'Beeler-Reuter Model')
 
     for t in model.run(im):
         if t == 600:    # 300 ms

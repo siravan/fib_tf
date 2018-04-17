@@ -26,7 +26,9 @@ Processing Units (TPU).
     * [Laplacian](#laplacian)
     * [Graph Unrolling](#graph-unrolling)
 * [The Beeler-Reuter Ionic Model](#the-beeler-reuter-ionic-model)
-* [Using the Chebyshev Polynomials](#using-the-chebyshev-polynomials)
+    * [The Rush-Larsen Method](the-rush-larsen-method)
+    * [Using the Chebyshev Polynomials](#using-the-chebyshev-polynomials)
+    * [Multi-rate Integration](#multi-rate-integration)
 
 
 # <a name='introduction-to-fib-tf'></a> Introduction to **fib_tf**
@@ -351,9 +353,9 @@ In the code, $x_{\infty}$ and $\tau_x$ are calculated in **BeelerReuter.calc_inf
 
 \[ \alpha = \frac{C_1 e^{C_2(v + C_3)} + C_4(v + C_5) } { e^{C_6(v + C_7) }}.\]
 
-The values of $C$s are found in the file **br.py** as an array **ab_coef** and are used to calculate $\alpha$s and $\beta$s in **BeelerReuter.calc_alpha_beta_np()**.
+The values of $C$s are found in the file **br.py** as an array **ab_coef** and are used to calculate $\alpha$s and $\beta$s in **BeelerReuter.calc_alpha_beta_np()**. These values are calculated by numpy during the graph definition phase and are considered constants in the TensorFlow graph. **Ionic.rush_larsen()** updates the gating variables (see Rush-Larsen method below) based on the values of $\alpha$s and $\beta$s.
 
-The gating variables are used to find the spontaneous currents. We have
+After updating the gating variables, they are used to find the spontaneous ionic currents. We have
 
 \[ i_{Na} = (g_{Na} m^3 h j + g_{NaC})(v - E_{Na}) ,\]
 
@@ -376,4 +378,84 @@ and,
 
 where $g_{K_1}$, $h_{K_1}$, and $g_{x_1}$ are channel conductance. Note that we have used an equivalent form of the last two equations by factoring out the exponentials using an accessory variable $k = \exp(0.04v)$.
 
-# <a name='using-the-chebyshev-polynomials'></a> Using the Chebyshev Polynomials
+We can run the baseline *Beeler-Reuter* solver as
+
+```
+python3 br.py
+```
+
+Note that the code already employs most of the optimization steps discuss above (JIT compilation, graph unrolling...). On my computer, this model takes 8.5 seconds per second of simulation compared to 2.8 seconds for the *4v* model. Considering twice the number of variables and more complicated formulas, a factor of 3 slow down is reasonable.
+
+But we are not done yet! There are still some optimizations tricks that can improve the performance even further. We will discuss three such techniques: the Rush-Larsen method, using the Chebyshev polynomials and multi-rate integration. These three methods are already coded in **br.py**, but with the exception of the Rush-Larsen, are not active at baseline. You can activate them by editing **br.py** (in the `if __name__ == '__main__':` section on the bottom of the file) and change `cheby` to true to activate the Chebyshev polynomials or `skip` to true to activate the multi-rate integration. We can achieve a factor of 2 speed up by activating both:
+
+
+|                   | cheby == False | cheby == True  |
+| ----------------- |----------------| ---------------|
+| **skip == False** | 8.5 s          |   7.0 s        |
+| **skip == True**  | 5.1 s          |   4.5 s        |
+
+
+## <a name='the-rush-larsen-method'></a> The Rush-Larsen Method
+
+Most cardiac electrophysiology ionic ODEs are *stiff* and require a small integration time step (usually a $\Delta{t}$ of 0.01-0.1 millisecond) to have a stable numerical solution. This small time step is necessary to capture the fast changing dynamics at the time of the action potential upstrokes; but, it is a waste of computational power in other phases of action potentials.
+
+The [Rush-Larsen](https://ieeexplore.ieee.org/document/4122859/) method replaces the explicit Euler integration for the gating variables, i.e., $x(t+\Delta{t}) = x(t) + \Delta{t}\,x'$, with direct integration. The starting point is Eq. XXX, which describes the dynamic of the gating variables in the Beeler-Reuter and other descendants of the Hodgkin-Huxley model, and is reproduced here by making the dependence on $v$ explicit,
+
+\[ dx / dt = \left(x_{\infty}(v) - x \right) / \tau_x(v).\]
+
+If we assume that $x$ changes on a faster time-scale than $x_{\infty}$ and $\tau_x$ (an assumption generally true for the the Hodgkin-Huxley type models), we can considered $x_{\infty}$ and $\tau_x$ constant for the duration of $\Delta{t}$ and perform a direct integration of Eq. XXX to obtain
+
+\[ x(t + \Delta{t}) = x_{\infty} - (x_{\infty} - x)\,e^{-\Delta{t}/\tau_x}. \]
+
+This equation is the basis of the Rush-Larsen method and is coded essentially directly in **Ionin.rush_larsen()**
+
+```python
+def rush_larsen(self, g, g_inf, g_tau, dt, name=None):
+    return tf.clip_by_value(g_inf - (g_inf - g) * tf.exp(-dt/g_tau), 0.0,
+                            1.0, name=name)
+```
+
+It allows for the integration of the Beeler-Reuter model with a time step of 0.1 ms, instead of 0.01 ms without the Rush-Larsen trick. This is a factor 10 improvement! It should be noted that the Rush-Larsen method is a general and standard method in solving cardiac electrophysiology ionic models and is not exclusive to TensorFlow or even GPU.
+
+## <a name='using-the-chebyshev-polynomials'></a> Using the Chebyshev Polynomials
+
+Lookup tables are commonly used to increase the speed of solving systems of ODEs. This method is particularly suitable for solving cardiac ionic models, because the right side of many of the equations describing the dynamics of the models depend only of the transmembrane potential. For example, for the Beeler-Reuter model, the time derivatives of the six gating variables are defined by $\alpha(v)$ and $\beta(v)$. It is reasonable to calculate $\alpha$ and $\beta$ for different values of $v$ ahead of time and then just perform a table lookup (with some forms of interpolation) to find the desired values while running the model.
+
+It is reasonably straightforward to implement lookup tables running on a CPU in programming languages like C, C++ and fortran (the usual high-performance computing choices); notwithstanding subtle issues with cache coherence. The situation is more interesting when dealing with GPUs. Lookup tables are located in the global memory. Considering that global memory access is the primary bottleneck of most GPU applications, it is commonly more efficient to recalculate the intermediate parameters each time than doing a table lookup. However, GPU are designed with graphic acceleration in mind and lookup tables are ubiquitous in graphic applications. Therefore, they have specialized hardware to accelerate lookups in the form of *texture memory*. Unfortunately, at least to best of my knowledge, TensorFlow currently does not have an operation to use the texture memory and direct table lookups are exceedingly slow.
+
+It is in this setting that we decided to use [Chebyshev polynomials](https://en.wikipedia.org/wiki/Chebyshev_polynomials) to encode the lookup values. Chebyshev polynomials are a valuable tool in numerical analysis and numerical approximation. Here, we only present the bare minimum needed to advance our discussion and cannot do justice to the large and interesting mathematics of the Chebyshev polynomials.
+
+A Chebyshev polynomial of the first kind $T_i(x)$ is an order $i$ polynomial in variable $x$, defined recursively as
+
+\[ T_0(x) = 1, \]
+\[ T_1(x) = x, \]
+\[ T_n(x) = 2xT_{n-1}(x) - T_{n-2}(x) \]
+
+Few examples,
+
+\[ T_2(x) = 2x^2 - 1, \]
+\[ T_3(x) = 4x^3 - 3x, \]
+\[ T_4(x) = 8x^4 - 8x^2 + 1, \]
+\[ T_{10}(x) = 512x^{10} - 1280x^8 + 1120x^6 -400x^4 + 50x^2 - 1. \]
+
+Chebyshev polynomial are orthogonal on the interval [-1,1] with respect to the weighting factor $(1-x^2)^{-1/2}$,
+
+\[
+    \int_{-1}^{1} T_n(x)T_m(x)\,\frac{dx}{\sqrt{1-x^2}} =
+        \begin{cases}
+        0       & \quad n \neq m    \\
+        \pi     & \quad n = m = 0   \\
+        \pi/2   & \quad n = m \neq 0
+        \end{cases}
+\]
+
+The Chebychev polynomials can act as a basis set. Let $f(x)$ be a continuous and piecewise smooth function defined on [1,-1]. It can be expressed as
+
+\[
+    f(x) = \sum_{i=0}^{\infty} a_i T_i(x).
+\]
+
+
+
+
+## <a name='multi-rate-integration'></a> Multi-rate Integration
