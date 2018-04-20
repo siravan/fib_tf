@@ -180,50 +180,40 @@ class BeelerReuter(IonicModel):
 
         return M1, H1, J1, D1, F1, XI1
 
-    def update_gates_with_cheby(self, V0, M, H, J, D, F, XI, n):
+    def update_gates_with_cheby(self, V0, M, H, J, D, F, XI, n, deg=8):
         """
             updates the six gating variables using the Chebyshev Polynomials
             n is the number of steps to advance the slow gates
             m and h are always advanced one step
         """
         dt = self.dt
-        # calculating Chebyshev polynomials of the first kind
-        # using T_0(x) = 1, T_1(x) = 2x, and the recurrence relationship
-        # T_n(x) = 2xT_{n-1} - T_{n-2}
-        # note: x ranges from -2 to 2 and is twice the actual Chebyshev input
-        x = (V0 - 0.5*(self.max_v+self.min_v)) / (0.25*(self.max_v-self.min_v))
-        # T1x2 is T1 x 2
-        T1x2 = tf.identity(x, name='T1x2')
-        T2 = 0.5*T1x2*T1x2 - 1.0
-        T3 = T1x2*T2 - 0.5*T1x2
-        T4 = T1x2*T3 - T2
-        T5 = T1x2*T4 - T3
-        T6 = T1x2*T5 - T4
-        T7 = T1x2*T6 - T5
-        T8a = T1x2*T7
+        # note: x ranges from -1 to +1 and is input to Chebyshev polynomials
+        x = (V0 - 0.5*(self.max_v+self.min_v)) / (0.5*(self.max_v-self.min_v))
 
-        Ts = [T1x2, T2, T3, T4, T5, T6, T7, T8a]
+        # Ts is a list [S_0,...,S_{\deg}], where S_i is the leading term of
+        # S_i
+        Ts = self.calc_chebyshev_leading(x, 8)
 
         v, α, β = self.calc_alpha_beta_np()
 
-        m_inf = self.chebyshev_poly(Ts, v, α[:,1]/(α[:,1]+β[:,1]))
-        h_inf = self.chebyshev_poly(Ts, v, α[:,2]/(α[:,2]+β[:,2]))
-        m_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,1]+β[:,1]))
-        h_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,2]+β[:,2]))
+        m_inf = self.expand_chebyshev(Ts, v, α[:,1]/(α[:,1]+β[:,1]))
+        h_inf = self.expand_chebyshev(Ts, v, α[:,2]/(α[:,2]+β[:,2]))
+        m_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,1]+β[:,1]))
+        h_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,2]+β[:,2]))
 
         M1 = self.rush_larsen(M, m_inf, m_tau, dt, name='M1')
         H1 = self.rush_larsen(H, h_inf, h_tau, dt, name='H1')
 
         if n > 0:
-            xi_inf = self.chebyshev_poly(Ts, v, α[:,0]/(α[:,0]+β[:,0]))
-            j_inf = self.chebyshev_poly(Ts, v, α[:,3]/(α[:,3]+β[:,3]))
-            d_inf = self.chebyshev_poly(Ts, v, α[:,4]/(α[:,4]+β[:,4]))
-            f_inf = self.chebyshev_poly(Ts, v, α[:,5]/(α[:,5]+β[:,5]))
+            xi_inf = self.expand_chebyshev(Ts, v, α[:,0]/(α[:,0]+β[:,0]))
+            j_inf = self.expand_chebyshev(Ts, v, α[:,3]/(α[:,3]+β[:,3]))
+            d_inf = self.expand_chebyshev(Ts, v, α[:,4]/(α[:,4]+β[:,4]))
+            f_inf = self.expand_chebyshev(Ts, v, α[:,5]/(α[:,5]+β[:,5]))
 
-            xi_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,0]+β[:,0]))
-            j_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,3]+β[:,3]))
-            d_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,4]+β[:,4]))
-            f_tau = self.chebyshev_poly(Ts, v, 1.0/(α[:,5]+β[:,5]))
+            xi_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,0]+β[:,0]))
+            j_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,3]+β[:,3]))
+            d_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,4]+β[:,4]))
+            f_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,5]+β[:,5]))
 
             XI1 = self.rush_larsen(XI, xi_inf, xi_tau, dt*n)
             J1 = self.rush_larsen(J, j_inf, j_tau, dt*n)
@@ -272,19 +262,50 @@ class BeelerReuter(IonicModel):
         beta = y[...,1::2]
         return v, alpha, beta
 
-    def chebyshev_poly(self, Ts, x, y, deg=8):
+    def calc_chebyshev_leading(self, x, deg):
         """
-            Defines an 8 order Chebyshev polymonial estimating y at x
+            calculates S_i (the leading term of T_i) based on
+            an input tensor x
+        """
+        assert(deg > 1)
+        T0 = 1.0
+        T1 = x
+        Ts = [T0, T1]
+        for i in range(deg-1):
+            T = 2*x*Ts[-1]
+            Ts.append(T)
+        return Ts
 
-            Ts is a list of Tensors as [T1x2, T2, T3, T4, T5, T6, T7, T8a],
-            where T1x2 is 2*T1, T8a is T8 + T6, and Tn is the nth
-            Chebyshev polynomial of the first kind. The reason for T1x2 and T8a
-            instead of T1 and T8 is fewer multipilications to improve
-            performance.
+    def expand_chebyshev(self, Ts, x, y, deg=0):
         """
+            Defines an order deg Chebyshev polymonial estimating y sampled at x
+
+            Ts is a list of [S_0,...,S_{\deg}] of S_i tensors, where
+            S_i is the leading terms of the Chebyshev polynomial T_i.
+        """
+        if deg == 0:
+            deg = len(Ts) - 1
+
+        # c is the coefficients of the least squares fit to
+        # the data y sampled at x
         c = np.polynomial.chebyshev.Chebyshev.fit(x, y, deg).coef
-        return (c[0] + (0.5*c[1])*Ts[0] + c[2]*Ts[1] + c[3]*Ts[2] + c[4]*Ts[3] +
-                c[5]*Ts[4] + (c[6]-c[8])*Ts[5] + c[7]*Ts[6] + c[8]*Ts[7])
+
+        # a is the chebyshev polynomials coefficients
+        # a[i,j] is the coefficient of x^j in T_i
+        a = np.zeros([deg+1, deg+1], dtype=np.int)
+        a[0,0] = 1      # T_0 = 1
+        a[1,1] = 1      # T_1 = x
+        for i in range(2, deg+1):
+            a[i,1:] += 2*a[i-1,:-1]     # + 2x T_{i-1}
+            a[i,:] -= a[i-2,:]          # - T_{i-2}
+        a //= np.diag(a)    # S_i is the leading term of T_i
+        # transform best fit coefficient from a T_i basis to an S_i basis
+        d = np.matmul(np.transpose(a), c)
+
+        r = d[0]    # note T_0 = S_0 = Ts[0] == 1.0
+        for i in range(1, deg+1):
+            r += d[i] * Ts[i]
+        return r
 
     def pot(self):
         return self._V
@@ -321,8 +342,8 @@ if __name__ == '__main__':
     model.add_pace_op('s3', 'right', 10.0)
 
     # note: change the following line to im = None to run without a screen
-    im = None
-    # im = Screen(model.height, model.width, 'Beeler-Reuter Model')
+    # im = None
+    im = Screen(model.height, model.width, 'Beeler-Reuter Model')
 
     for t in model.run(im):
         if t == 600:    # 300 ms

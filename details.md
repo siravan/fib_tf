@@ -386,13 +386,13 @@ python3 br.py
 
 Note that the code already employs most of the optimization steps discuss above (JIT compilation, graph unrolling...). On my computer, this model takes 8.5 seconds per second of simulation compared to 2.8 seconds for the *4v* model. Considering twice the number of variables and more complicated formulas, a factor of 3 slow down is reasonable.
 
-But we are not done yet! There are still some optimizations tricks that can improve the performance even further. We will discuss three such techniques: the Rush-Larsen method, using the Chebyshev polynomials and multi-rate integration. These three methods are already coded in **br.py**, but with the exception of the Rush-Larsen, are not active at baseline. You can activate them by editing **br.py** (in the `if __name__ == '__main__':` section on the bottom of the file) and change `cheby` to true to activate the Chebyshev polynomials or `skip` to true to activate the multi-rate integration. We can achieve a factor of 2 speed up by activating both:
+But we are not done yet! There are still some optimizations tricks that can improve the performance even further. We will discuss three such techniques: the Rush-Larsen method, using the Chebyshev polynomials and multi-rate integration. These three methods are already coded in **br.py**, but with the exception of the Rush-Larsen, are not active at baseline. You can activate them by editing **br.py** (in the `if __name__ == '__main__':` section on the bottom of the file) and change `cheby` to true to activate the Chebyshev polynomials or `skip` to true to activate the multi-rate integration. We can achieve a factor of 2-2.5 speed up by activating both:
 
 
 |                   | cheby == False | cheby == True  |
 | ----------------- |----------------| ---------------|
-| **skip == False** | 8.5 s          |   7.0 s        |
-| **skip == True**  | 5.1 s          |   4.5 s        |
+| **skip == False** | 8.5 s          |   5.1 s        |
+| **skip == True**  | 5.1 s          |   3.9 s        |
 
 
 ## <a name='the-rush-larsen-method'></a> The Rush-Larsen Method
@@ -425,7 +425,7 @@ It is reasonably straightforward to implement lookup tables running on a CPU in 
 
 It is in this setting that we decided to use [Chebyshev polynomials](https://en.wikipedia.org/wiki/Chebyshev_polynomials) to encode the lookup values. Chebyshev polynomials are a valuable tool in numerical analysis and numerical approximation. Here, we only present the bare minimum needed to advance our discussion and cannot do justice to the large and interesting mathematics of the Chebyshev polynomials.
 
-A Chebyshev polynomial of the first kind $T_i(x)$ is an order $i$ polynomial in variable $x$, defined recursively as
+A Chebyshev polynomial of the first kind $T_i(x)$ is a degree $i$ polynomial in variable $x$, defined recursively as
 
 \[ T_0(x) = 1, \]
 \[ T_1(x) = x, \]
@@ -449,13 +449,71 @@ Chebyshev polynomial are orthogonal on the interval [-1,1] with respect to the w
         \end{cases}
 \]
 
-The Chebychev polynomials can act as a basis set. Let $f(x)$ be a continuous and piecewise smooth function defined on [1,-1]. It can be expressed as
+The Chebyshev polynomials can act as a basis set in a similar fashion to the trigonometrical functions in Fourier analysis. Let $f(x)$ be a continuous and piecewise smooth function defined on [1,-1]. It can be expressed as
 
 \[
-    f(x) = \sum_{i=0}^{\infty} a_i T_i(x).
+    f(x) = \sum_{i=0}^{\infty} c_i T_i(x).
 \]
 
+For the Beeler-Reuter solver, we employ the Chebyshev polynomials to approximate $g_{\infty}$ and $\tau_g$ for the six gating variables. Let's explore the straightforward way to do this (we will later modify this). We use order 8 polynomials in the solver, but for the sake of simplicity, we use order 4 here to demonstrate the method.
 
+The transmembrane potential ranges between -90 to +30 mV in the Beeler-Reuter model. We remap this range to [-1,1] in **BeelerReuter.update_gates_with_cheby** as
+
+```python
+x = (V0 - 0.5*(self.max_v+self.min_v)) / (0.5*(self.max_v-self.min_v))
+```
+
+Note than $x$ is a 2D TensorFlow tensor and not a scalar. Next, we can calculate the corresponding Chebyshev polynomials using the recurrence relationship,
+
+```python
+T0 = 1.0
+T1 = x
+T2 = 2*x*T1 - T0
+T3 = 2*x*T2 - T1
+T4 = 2*x*T3 - T2
+```
+
+Assume the goal is to approximate $m_{\infty}$. We calculate $m_{\infty}$ on 5001 points over [-1,1]. Let's call the result $y$. We estimate the best fit Chebyshev coefficients as
+
+```python
+c = np.polynomial.chebyshev.Chebyshev.fit(x, y, deg).coef
+```
+
+Note that $c$ is calculate by numpy during the setup stage and the resulting coefficients are considered constants as far as TensorFlow is concerned. Now, we can find the value of $m_{\infty}$ at each point as
+
+```python
+m_inf = c[0] + c[1]*T1 + c[2]*T2 + c[3]+T3 + c[4]*T4
+```
+
+The figure below shows the actual (orange) and approximated (blue) values for $m_{\infty}$:
+
+![](m_inf.png)
+
+We have implemented this method (for order 8 polynomials). It works! But the performance is not great and it confers only a modest performance benefit. I believe the problem arises because the JIT compiler has difficulty optimizing the $T_i$ calculations. The solution is to use instead $S_i$, the leading term of $T_i$, where $S_i$ depends directly only on $S_{i-1}$ and not $S_{i-2}$. This seems to help the optimizer avoid unnecessary copying to and back from the global memory. Therefore,
+
+```python
+S0 = 1.0
+S1 = x
+S2 = 2*x*S1
+S3 = 2*x*S2
+S4 = 2*x*S3
+```
+
+$T_i$s are expanded in term of $S_i$s as
+
+\[ T_0 = S_0 = 1\]
+\[ T_1 = S_1 \]
+\[ T_2 = S_2 - 1 \]
+\[ T_3 = S_3  - 3S_1\]
+\[ T_4 = S_4 - 4S_2 + 1\]
+
+Therefore,
+
+```python
+m_inf = (c[0]-c[2]+c[4]) + (c[1]-3*c[3])*S1 + (c[2]-4*c[4])*S2 + c[3]+S3 + c[4]*S4
+```
+
+In the code, **BeelerReuter.calc_chebyshev_leading** and **BeelerReuter.expand_chebyshev** do these calculation for arbitrary order polynomials. The resulting code runs 1.5-2X faster than the baseline code.
 
 
 ## <a name='multi-rate-integration'></a> Multi-rate Integration
