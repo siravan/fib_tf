@@ -228,7 +228,7 @@ Before describing the solutions, let's first see if we can find the root cause o
 
 TensorFlow has a powerful [profiler](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/README.md). We profile one time step in **Fenton4vSimple.run()** and save the results as *timeline_simple.json*, which can be visualized in chrome browsers by typing *chrome://trace* in the address bar and load the file. The result is
 
-![https://siravan.github.io/fib_tf/timeline_simple.json](timeline_simple.png)
+![https://siravan.github.io/fib_tf/timeline_simple.json](https://siravan.github.io/fib_tf/timeline_simple.png)
 
 Based on the horizontal time bar on the top of the figure, one time step takes a little over $1,200\,\mu\text{s}$. Since we use a $\Delta{t} = 0.1\,\text{ms}$, one second of simulation requires 10000 iterations or ~12 sec.
 
