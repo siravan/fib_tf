@@ -18,7 +18,7 @@ The following software packages are needed:
 
 It should be noted the TensorFlow installables come in different flavors. **fib_tf** can work on CPU only (after changing the line `tf.device('/device:GPU:0'):` to `tf.device('/device:CPU:0'):`), but it would be too slow.
 
-However, just having a GPU-enabled version of Tensorflow is not enough either, rather **you need a TensorFlow version with XLA JIT enabled to have the best performance**. See [details](details.html) for discussion on why this is so important. Fortunately, TensorFlow has an experimental [Just In Time (JIT) compiler](https://www.tensorflow.org/performance/xla/jit) that allows fusing multiple kernels into one. But this feature is still not available in the stock versions of TensorFlow. To enable it, you need to compile Tensorflow from source. This is not the easiest installation process, but is very well doable as long as you just [follow the instructions!](https://www.tensorflow.org/install/install_sources)
+However, just having a GPU-enabled version of Tensorflow is not enough either, rather **you need a TensorFlow version with XLA JIT enabled to have the best performance**. See [details](https://siravan.github.io/fib_tf/details.html) for discussion on why this is so important. Fortunately, TensorFlow has an experimental [Just In Time (JIT) compiler](https://www.tensorflow.org/performance/xla/jit) that allows fusing multiple kernels into one. But this feature is still not available in the stock versions of TensorFlow. To enable it, you need to compile Tensorflow from source. This is not the easiest installation process, but is very well doable as long as you just [follow the instructions!](https://www.tensorflow.org/install/install_sources)
 
 # Download
 
@@ -30,13 +30,13 @@ Change into the `fib_tf` directory and run the models.
 
 # Main Files
 
-- *screen.py*: provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
-- *dll.py*: a helper file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
-- *ionic.py*: contains the base class for implementing ionic models.
-- *fenton.py*: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
-- *br.py*: implements the 8-variable modified Beeler-Reuter.
-- *README.md*: this file!
-- *details.html*: A detailed discussion of the software and techniques used.
+- *[screen.py](screen.py)*: provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
+- *[dll.py](dll.py)*: a helper file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
+- *[ionic.py](ionic.py)*: contains the base class for implementing ionic models.
+- *[fenton.py](fenton.py)*: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
+- *[br.py](br.py)*: implements the 8-variable modified Beeler-Reuter.
+- *[README.md](README.md)*: this file!
+- *[details.html](https://siravan.github.io/fib_tf/details.html)*: A detailed discussion of the software and techniques used.
 
 # Test
 
@@ -50,7 +50,7 @@ and the 8-variable modified Beeler-Reuter model as
 
 # Documentation
 
-The details of the ionic models and various methods and tricks used to improve the performance are discussed [here](details.html).
+The details of the ionic models and various methods and tricks used to improve the performance are discussed [here](https://siravan.github.io/fib_tf/details.html).
 
 To run **fib_tf** models interactively, you first need to import the desired model. For the *4v* model, it is imported as `import fenton`. Next, we need to define a configuration dict. For the *4v* model, it is defined like
 
