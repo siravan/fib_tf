@@ -1,15 +1,37 @@
 """
     A TensorFlow-based 2D Cardiac Electrophysiology Modeler
-    @2017 Shahriar Iravanian (siravan@emory.edu)
+
+    Copyright 2017-2018 Shahriar Iravanian (siravan@emory.edu)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
 """
 
 import numpy as np
 import time
 import tensorflow as tf
 from tensorflow.python.client import timeline
-import screen as sc
 
 class IonicModel:
+    """
+        IonicModel is the base class for cardiac electrophysiology simulation
+    """
+
     def __init__(self, config):
         for key, val in config.items():
             setattr(self, key, val)
@@ -20,7 +42,7 @@ class IonicModel:
 
     def laplace(self, X):
         """
-            Compute the 2D laplacian of an array directly and without using conv
+            laplace computes the 2D Laplacian of X directly and without using conv
             it also adds the phase field correction if self.phase is defined
         """
         l = (X[:-2,1:-1] + X[2:,1:-1] + X[1:-1,:-2] + X[1:-1,2:] +
@@ -37,7 +59,7 @@ class IonicModel:
 
     def phase_field(self, X):
         """
-            Compute the 2D phase field
+            phase_field computes the 2D phase field correction
             it assumes self.ϕ exists and is the same shape as X
         """
         ϕ = self.ϕ
@@ -48,8 +70,8 @@ class IonicModel:
 
     def add_hole_to_phase_field(self, x, y, radius):
         """
-            adds a circular hole, centered at (x,y), to the phase field
-            it creates the phase field if it does not already exist
+            add_hole_to_phase_field adds a circular hole, centered at (x,y), to
+            the phase field. It creates a phase field if it does not already exist
 
             NOTE: this method should be called before calling define
         """
@@ -67,21 +89,33 @@ class IonicModel:
 
     def enforce_boundary(self, X):
         """
-            Enforcing the no-flux (Neumann) boundary condition
+            enforce_boundary enforces the no-flux (Neumann) boundary condition
+            on the medium borders
         """
         paddings = tf.constant([[1,1], [1,1]])
         return tf.pad(X[1:-1,1:-1], paddings, 'SYMMETRIC', name='boundary')
 
     def rush_larsen(self, g, g_inf, g_tau, dt, name=None):
+        """
+            rush_larsens is a helper funcion to implement the Rush-Larsen
+            direct integration of the gating variables
+        """
         return tf.clip_by_value(g_inf - (g_inf - g) * tf.exp(-dt/g_tau), 0.0,
                                 1.0, name=name)
 
     def add_pace_op(self, name, loc, v):
         """
-            adds a pacemaker op to the list of operation
-            loc is one of 'left', 'right', 'top', 'bottom',
-            'luq' (left upper quadrant), 'llq' (left lower quadrant),
-            'ruq' (right upper quadrant), and 'rlq' (right lower quadrant)
+            add_pace_op adds a stimulator/pacing op to the list of operations
+
+            loc is one of
+                'left',
+                'right',
+                'top',
+                'bottom',
+                'luq' (left upper quadrant),
+                'llq' (left lower quadrant),
+                'ruq' (right upper quadrant),
+                'rlq' (right lower quadrant)
 
             NOTE: this method should be called after calling define
         """
@@ -110,18 +144,26 @@ class IonicModel:
         self._ops[name] = self.pot().assign(tf.maximum(self.pot(), s))
 
     def fire_op(self, name):
+        """
+            fire_op activates the operation name already added by add_pace_op
+        """
         self._sess.run(self._ops[name])
 
     def run(self, im=None):
         """
-            Runs the model. The model should be defined first by calling
-            self.define()
+            runs first defines a TensorFlow Session, attaches the dataflow to it,
+            and then run it. The model should be defined first by calling define().
+            runs is a generator and is used like
+
+                for i in model.run(im):
+                    if i == s2:
+                        model.fire_op('s2')
 
             Args:
                 im: A Screen used to paint the transmembrane potential
 
             Returns:
-                None
+                step count
         """
 
         with tf.Session() as sess:
@@ -134,10 +176,10 @@ class IonicModel:
             tf.global_variables_initializer().run()
             v0 = self.min_v
             last_spike = 0
-            samples = int(self.duration / (self.dt_per_step * self.dt))
+            self.samples = int(self.duration / (self.dt_per_step * self.dt))
 
             # the main loop!
-            for i in range(samples):
+            for i in range(self.samples):
                 sess.run(self.ode_op(i))
                 yield i
                 # draw a frame every 1 ms
@@ -169,28 +211,39 @@ class IonicModel:
         if im:
             im.wait()   # wait until the window is closed
 
+    def millisecond_to_step(self, t):
+        """
+            millisecond_to_step converts t in milliseconds to a step count
+            returns from run()
+        """
+        return int(t / (self.dt_per_step * self.dt))
+
     def define(self, s1=True):
         """
-            A placeholder for a method to be defined in a subclass
-            It should define the model and set self.ode_op and
-            self.s2_op in addition to any state needed for self.image
+            define is a placeholder to be replaced in subclasses
+            It should define the model and set self._ode_op
+            in addition to any state needed for self.image
         """
         self.defined = True
 
     def image(self):
         """
-            A placeholder for a method to be defined in a subclass.
+            image is a placeholder to be replaced in subclasses
             It should return a [height x width] float ndarray in the range 0 to 1
             that encodes the transmembrane potential in grayscale
         """
         pass
 
     def pot(self):
+        """
+            pot is a placeholder to be replaced in subclasses
+            it returns the transmembrane voltage
+        """
         pass
 
     def ode_op(self, tick):
         """
-            Returns the ODE operation for time tick (in dt unit)
+            ode_op returns the ODE operation
         """
         if hasattr(self, '_ode_op'):
             return self._ode_op
@@ -198,9 +251,6 @@ class IonicModel:
             return self._ode_slow_op
         else:
             return self._ode_fast_op
-
-    def s2_op(self):
-        return self._s2_op
 
     def __enter__(self):
         return self
@@ -210,8 +260,8 @@ class IonicModel:
 
     def jit_scope(self):
         """
-            Returns an XLA jit_scope if available; otherwise self is returned
-            and provides a dummy Context
+            jit_scope returns an XLA jit_scope if available; otherwise self is
+            returned as a dummy Context
         """
         try:
             scope = tf.contrib.compiler.jit.experimental_jit_scope

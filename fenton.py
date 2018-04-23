@@ -1,7 +1,26 @@
 #!/home/shahriar/anaconda3/bin/python
 """
     A TensorFlow-based 2D Cardiac Electrophysiology Modeler
-    @2017 Shahriar Iravanian (siravan@emory.edu)
+
+    Copyright 2017-2018 Shahriar Iravanian (siravan@emory.edu)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
 """
 
 import tensorflow as tf
@@ -110,6 +129,7 @@ class Fenton4v(IonicModel):
             W  = tf.Variable(w_init, name='W')
             S  = tf.Variable(s_init, name='S')
 
+            # Graph Unrolling
             states = [(U, V, W, S)]
             for i in range(10):
                 states.append(self.solve(states[-1]))
@@ -133,28 +153,26 @@ class Fenton4v(IonicModel):
 
 if __name__ == '__main__':
     config = {
-        'width': 512,
-        'height': 512,
-        'dt': 0.1,
-        'dt_per_plot' : 10,
-        'diff': 1.5,
-        'duration': 1000,
-        'cheby': False,
-        'timeline': False,
+        'width': 512,           # screen width in pixels
+        'height': 512,          # screen height in pixels
+        'dt': 0.1,              # integration time step in ms
+        'dt_per_plot' : 10,     # screen refresh interval in dt unit
+        'diff': 1.5,            # diffusion coefficient
+        'duration': 1000,       # simulation duration in ms
+        'timeline': False,      # flag to save a timeline (profiler)
         'timeline_name': 'timeline_4v.json',
-        'save_graph': True
+        'save_graph': True      # flag to save the dataflow graph
     }
     model = Fenton4v(config)
 
     # model.add_hole_to_phase_field(256, 256, 50.0)
     model.define()
     model.add_pace_op('s2', 'luq', 1.0)
-    # model.add_pace_op('s3', 'right', 1.0)
     # note: change the following line to im = None to run without a screen
     im = Screen(model.height, model.width, 'Fenton 4v Model')
 
-    for t in model.run(im):
-        if t == 210:
+    s2 = model.millisecond_to_step(210)     # 210 ms
+
+    for i in model.run(im):
+        if i == s2:
             model.fire_op('s2')
-        # if t > 500 and t < 8000 and t % 100 == 0:
-        #    model.fire_op('s3')

@@ -1,7 +1,26 @@
 #!/home/shahriar/anaconda3/bin/python
 """
     A TensorFlow-based 2D Cardiac Electrophysiology Modeler
-    @2017 Shahriar Iravanian (siravan@emory.edu)
+
+    Copyright 2017-2018 Shahriar Iravanian (siravan@emory.edu)
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
 """
 
 import tensorflow as tf
@@ -322,31 +341,30 @@ class BeelerReuter(IonicModel):
 
 if __name__ == '__main__':
     config = {
-        'width': 512,
-        'height': 512,
-        'dt': 0.1,
-        'skip': False,
-        'dt_per_plot': 10,
-        'diff': 0.809,
-        'duration': 1000,
-        'cheby': True,
-        'timeline': False,
+        'width': 512,           # screen width in pixels
+        'height': 512,          # screen height in pixels
+        'dt': 0.1,              # integration time step in ms
+        'dt_per_plot': 10,      # screen refresh interval in dt unit
+        'diff': 0.809,          # diffusion coefficient
+        'duration': 1000,       # simulation duration in ms
+        'skip': False,          # optimization flag: activate multi-rate
+        'cheby': True,          # optimization flag: activate Chebysheb polynomials
+        'timeline': False,      # flag to save a timeline (profiler)
         'timeline_name': 'timeline_br.json',
-        'save_graph': False
+        'save_graph': False     # flag to save the dataflow graph
     }
 
     model = BeelerReuter(config)
-    model.add_hole_to_phase_field(150, 200, 40)
+    model.add_hole_to_phase_field(150, 200, 40) # center=(150,200), radius=40
     model.define()
     model.add_pace_op('s2', 'luq', 10.0)
-    model.add_pace_op('s3', 'right', 10.0)
 
     # note: change the following line to im = None to run without a screen
     # im = None
     im = Screen(model.height, model.width, 'Beeler-Reuter Model')
 
-    for t in model.run(im):
-        if t == 600:    # 300 ms
+    s2 = model.millisecond_to_step(300)     # 300 ms
+
+    for i in model.run(im):
+        if i == s2:
             model.fire_op('s2')
-        # if t > 2000 and t < 10000 and t % 340 == 0:
-        #     model.fire_op('s3')
