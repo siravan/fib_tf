@@ -1,8 +1,8 @@
 # Introduction
 
-**fib_tf** is a python framework developed on the top of [TensorFlow](http://tensorflow.org) for 2D cardiac electrophysiology simulation. While TensorFlow is primarily designed for machine learning applications, it also provides a general framework for performing multidimensional tensor manipulation. The primary goal of **fib_tf** is to test and assess the suitability of TensorFlow for solving systems of stiff ordinary differential equations (ODE) needed for cardiac modeling.
+**fib_tf** is a Python framework developed on the top of [TensorFlow](http://tensorflow.org) for 2D cardiac electrophysiology simulation. While TensorFlow is primarily designed for machine learning applications, it also provides a general framework for performing multidimensional tensor manipulation. The primary goal of **fib_tf** is to test and assess the suitability of TensorFlow for solving systems of stiff ordinary differential equations (ODE) needed for cardiac modeling.
 
-Programming Graphics Processing Units (GPU) using C/C++ CUDA or OpenCL is not a trivial task and is both time-consuming and error-prone. This is where TensorFlow can be very useful. Because TensorFlow takes care of the lower level details of running the model on a GPU, the programmer can focus on the high-level model and be more productive. Additionally, TensorFlow allows running the model on multiple GPUs or even clusters. While it is not expected that a TensorFlow ODE solver beats a handcrafted optimized CUDA kernel, we hope to get a reasonable performance. The main question we are trying to answer is whether this performance is good enough.
+Programming Graphics Processing Units (GPU) using C/C++ CUDA or OpenCL is not a trivial task and is both time-consuming and error-prone. This is where TensorFlow can be very useful. Because TensorFlow takes care of the lower level details of running the model on a GPU, the programmer can focus on the high-level model and be more productive. Additionally, TensorFlow allows running the model on multiple GPUs or even clusters. While it is not expected that a TensorFlow ODE solver beats a handcrafted optimized CUDA code, we hope to get a reasonable performance. The main question we are trying to answer is whether this performance is good enough.
 
 # Requirements:
 
@@ -31,10 +31,12 @@ Change into the `fib_tf` directory and run the models.
 # Main Files
 
 - *[screen.py](screen.py)*: provides a simple SDL2 screen to plot a 2D numpy array in grayscale.
-- *[dll.py](dll.py)*: a helper file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
+- *[dll.py](dll.py)*: a helper copied file from PySDL2 to find and load the appropriate SDL2 library (libSDL2.so in Linux).
 - *[ionic.py](ionic.py)*: contains the base class for implementing ionic models.
-- *[fenton.py](fenton.py)*: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model.
-- *[br.py](br.py)*: implements the 8-variable modified Beeler-Reuter.
+- *[fenton.py](fenton.py)*: implements the 4-variable Cherry-Ehrlich-Nattel-Fenton canine left-atrial model (*4v* model).
+- *[fenton_simple.py](fenton_simple.py)*: a basic implementation of the *4v* model (see [details.html](https://siravan.github.io/fib_tf/details.html)).
+- *[fenton_jit.py](fenton_jit.py)*: an intermediate implementation of the *4v* model (see [details.html](https://siravan.github.io/fib_tf/details.html)).
+- *[br.py](br.py)*: implements the 8-variable modified Beeler-Reuter model.
 - *[README.md](README.md)*: this file!
 - *[details.html](https://siravan.github.io/fib_tf/details.html)*: A detailed discussion of the software and techniques used.
 
@@ -92,7 +94,7 @@ Then, we need to create a model object. For example:
 model = br.BeelerReuter(config)
 ```
 
-In a minimum application, we construct a dataflow graph by calling `model.define()` and run it as:
+At a minimum, we construct a dataflow graph by calling `model.define()` and run it as:
 
 ```python
 for i in model.run():
@@ -114,7 +116,7 @@ for i in model.run(im):
     pass
 ```
 
-A single planar wave! Better, but still not very interesting. We can induce a spiral wave by a S1-S2 stimulation protocol. S1 is implicit, but we need to define S2:
+A single planar wave! Better, but still not very interesting. We can induce a spiral wave by an S1-S2 cross-stimulation protocol. S1 is implicit, but we need to define S2:
 
 ```python
 model.add_pace_op('s2', 'luq', 10.0)
@@ -130,7 +132,7 @@ for i in model.run(im):
         model.fire_op('s2')
 ```
 
-This time we get a nice spiral wave. Note that we need to convert the desired time of S2 to the number of steps returns from **model.run**.
+This time we get a nice spiral wave. Note that we need to convert the desired time of S2 to the number of steps returns from **model.run()**.
 
 We can do even better. Let's add a circular obstacle to the medium by adding this line *before* calling `model.define()`:
 
@@ -140,7 +142,41 @@ model.add_hole_to_phase_field(150, 200, 40) # center=(150,200), radius=40
 
 Success! We get a spiral wave that anchors to the obstacle:
 
-![](br.png)
+![](https://siravan.github.io/fib_tf/br.png)
+
+Let's put all together:
+
+```python
+import br
+from screen import Screen
+
+config = {
+    'width': 512,           # screen width in pixels
+    'height': 512,          # screen height in pixels
+    'dt': 0.1,              # integration time step in ms        
+    'dt_per_plot': 10,      # screen refresh interval in dt unit
+    'diff': 0.809,          # diffusion coefficient
+    'duration': 1000,       # simulation duration in ms
+    'skip': False,          # optimization flag: activate multi-rate
+    'cheby': True,          # optimization flag: activate Chebysheb polynomials
+    'timeline': False,      # flag to save a timeline (profiler)
+    'timeline_name': 'timeline_br.json',
+    'save_graph': False     # flag to save the dataflow graph
+}
+
+model = br.BeelerReuter(config)
+model.add_hole_to_phase_field(150, 200, 40) # center=(150,200), radius=40
+model.define()
+model.add_pace_op('s2', 'luq', 10.0)
+im = Screen(model.height, model.width, 'Beeler-Reuter Model')
+
+s2 = model.millisecond_to_step(300)     # 300 ms
+
+for i in model.run(im):
+    if i == s2:
+        model.fire_op('s2')
+
+```
 
 ---
 @2017-2018 [Shahriar Iravanian](siravan@emory.edu)
