@@ -183,7 +183,7 @@ class IonicModel:
                 sess.run(self.ode_op(i))
                 yield i
                 # draw a frame every 1 ms
-                if im and i % (self.dt_per_plot / self.dt_per_step) == 0:
+                if im and i % int(self.dt_per_plot / self.dt_per_step) == 0:
                     image = self.image()
                     if self.phase is not None:
                         image *= self.phase
