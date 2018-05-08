@@ -1,4 +1,4 @@
-#!/home/shahriar/anaconda3/bin/python
+#!/usr/bin/env python
 """
     A TensorFlow-based 2D Cardiac Electrophysiology Modeler
 
