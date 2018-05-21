@@ -45,38 +45,39 @@ class Courtemanche(IonicModel):
             print('Warning! The state variable arlready exists')
         state[name] = np.full([self.height, self.width], value, dtype=np.float32)
 
-    def define(self, s1=True):
+    def define(self, s1=True, state=None):
         """
             Defines the tensorflow model
             It sets ode_op, s2_op and V used by other methods
         """
         super().define()
-        state = {}
-        self.init_state_variable(state, 'V', -81.18)
-        self.init_state_variable(state, '_Na_i_', 1.117e+01)
-        self.init_state_variable(state, '_m_', 2.98e-3)
-        self.init_state_variable(state, '_h_', 9.649e-1)
-        self.init_state_variable(state, '_j_', 9.775e-1)
-        self.init_state_variable(state, '_K_i_', 1.39e+02)
-        self.init_state_variable(state, '_oa_', 3.043e-2)
-        self.init_state_variable(state, '_oi_', 9.992e-1)
-        self.init_state_variable(state, '_ua_', 4.966e-3)
-        self.init_state_variable(state, '_ui_', 9.986e-1)
-        self.init_state_variable(state, '_xr_', 3.296e-5)
-        self.init_state_variable(state, '_xs_', 1.869e-2)
-        self.init_state_variable(state, '_Ca_i_', 1.013e-4)
-        self.init_state_variable(state, '_d_', 1.367e-4)
-        self.init_state_variable(state, '_f_', 9.996e-1)
-        self.init_state_variable(state, '_f_Ca_', 7.755e-1)
-        self.init_state_variable(state, '_Ca_rel_', 1.488)
-        self.init_state_variable(state, '_u_', 0.0)
-        self.init_state_variable(state, '_v_', 1.0)
-        self.init_state_variable(state, '_w_', 0.9992)
-        self.init_state_variable(state, '_Ca_up_', 1.488)
+        if state is None:
+            state = {}
+            self.init_state_variable(state, 'V', -81.18)
+            self.init_state_variable(state, '_Na_i_', 1.117e+01)
+            self.init_state_variable(state, '_m_', 2.98e-3)
+            self.init_state_variable(state, '_h_', 9.649e-1)
+            self.init_state_variable(state, '_j_', 9.775e-1)
+            self.init_state_variable(state, '_K_i_', 1.39e+02)
+            self.init_state_variable(state, '_oa_', 3.043e-2)
+            self.init_state_variable(state, '_oi_', 9.992e-1)
+            self.init_state_variable(state, '_ua_', 4.966e-3)
+            self.init_state_variable(state, '_ui_', 9.986e-1)
+            self.init_state_variable(state, '_xr_', 3.296e-5)
+            self.init_state_variable(state, '_xs_', 1.869e-2)
+            self.init_state_variable(state, '_Ca_i_', 1.013e-4)
+            self.init_state_variable(state, '_d_', 1.367e-4)
+            self.init_state_variable(state, '_f_', 9.996e-1)
+            self.init_state_variable(state, '_f_Ca_', 7.755e-1)
+            self.init_state_variable(state, '_Ca_rel_', 1.488)
+            self.init_state_variable(state, '_u_', 0.0)
+            self.init_state_variable(state, '_v_', 1.0)
+            self.init_state_variable(state, '_w_', 0.9992)
+            self.init_state_variable(state, '_Ca_up_', 1.488)
 
-        # S1 stimulation: vertical along the left side
-        if s1:
-            state['V'][:,:5] = 20.0
+            # S1 stimulation: vertical along the left side
+            if s1:
+                state['V'][:,:25] = 20.0
 
         # define the graph...
         with tf.device('/device:GPU:0'):
@@ -99,7 +100,7 @@ class Courtemanche(IonicModel):
             self._ode_op = tf.group(*fasts)
             self._ops['slow'] = tf.group(*slows)
             self._V = State['V']  # V is needed by self.image()
-
+            self._State = State
 
     def euler(self, g, Rate, dt):
         return g + Rate * dt
@@ -158,7 +159,7 @@ class Courtemanche(IonicModel):
         else:
             chronic = 0.0
 
-        with self: #self.jit_scope():
+        with self.jit_scope():
             inter = self.calc_inter(V, tf)
 
             State1['_d_'] = self.rush_larsen(State['_d_'], inter['d_infinity'], inter['tau_d'], self.δt('_d_'))
@@ -512,41 +513,6 @@ class Courtemanche(IonicModel):
 
         return M1, H1, J1, D1, F1, XI1
 
-
-    def calc_alpha_bata_tf(self, v, c):
-        """
-            direct calculation of α/β in the non-Chebychev mode
-        """
-        if c[3] == 0:
-            return ((c[0] * tf.exp(c[1]*(v+c[2]), name='exp_A')) /
-                    (tf.exp(c[5]*(v+c[2]), name='exp_B') + c[6]))
-
-        return ((c[0] * tf.exp(c[1]*(v+c[2]), name='exp_C') + c[3] * (v+c[4])) /
-                (tf.exp(c[5]*(v+c[2]), name='exp_D') + c[6]))
-
-    def calc_inf_tau(self, v, c, d, name):
-        """
-            direct calculation of inf/tau in the non-Chebychev mode
-        """
-        with tf.name_scope(name) as scope:
-            α = self.calc_alpha_bata_tf(v, c)
-            β = self.calc_alpha_bata_tf(v, d)
-            return α/(α+β), 1.0/(α+β)
-
-    def calc_alpha_beta_np(self):
-        """
-            Defintion time calculation of α and β to be used
-            by the Chebyshev routines
-        """
-        v = np.linspace(self.min_v, self.max_v, 1001)
-        x = np.outer(v, np.ones(self.ab_coef.shape[0]))
-        y = ((self.ab_coef[:,0] * np.exp(self.ab_coef[:,1] * (x+self.ab_coef[:,2])) +
-                self.ab_coef[:,3] * (x+self.ab_coef[:,4])) /
-                (np.exp(self.ab_coef[:,5] * (x+self.ab_coef[:,2])) + self.ab_coef[:,6]))
-        alpha = y[...,::2]
-        beta = y[...,1::2]
-        return v, alpha, beta
-
     def calc_chebyshev_leading(self, x, deg):
         """
             calculates S_i (the leading term of T_i) based on
@@ -603,8 +569,6 @@ class Courtemanche(IonicModel):
         v = self._V.eval()
         return (v - self.min_v) / (self.max_v - self.min_v)
 
-
-
 if __name__ == '__main__':
     config = {
         'width': 512,           # screen width in pixels
@@ -620,19 +584,29 @@ if __name__ == '__main__':
         'save_graph': False     # flag to save the dataflow graph
     }
 
-    model = Courtemanche(config)
-    model.add_hole_to_phase_field(150, 200, 40) # center=(150,200), radius=40
-    model.define()
-    model.add_pace_op('s2', 'luq', 10.0)
+    m1 = Courtemanche(config)
+    m1.add_hole_to_phase_field(256, 256, 30) # center=(150,200), radius=40
+    m1.add_hole_to_phase_field(256, 256, 250, neg=True)
+    m1.define()
+    m1.add_pace_op('s2', 'luq', 10.0)
 
     # note: change the following line to im = None to run without a screen
     # im = None
-    im = Screen(model.height, model.width, 'Beeler-Reuter Model')
+    im = Screen(m1.height, m1.width, 'Courtemanche Model')
 
-    s2 = model.millisecond_to_step(300)     # 300 ms
+    s2 = m1.millisecond_to_step(300)     # 300 ms
 
-    for i in model.run(im):
+    for i in m1.run(im, keep_state=True, block=False):
         if i % 10 == 0:
-            model.fire_op('slow')
+            m1.fire_op('slow')
         if i == s2:
-            model.fire_op('s2')
+            m1.fire_op('s2')
+
+    m2 = Courtemanche(config)
+    m2.add_hole_to_phase_field(256, 256, 100) # center=(150,200), radius=40
+    m2.add_hole_to_phase_field(256, 256, 250, neg=True)
+    m2.define(state=m1.state)
+
+    for i in m2.run(im):
+        if i % 10 == 0:
+            m2.fire_op('slow')

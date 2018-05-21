@@ -68,10 +68,12 @@ class IonicModel:
              ) / (4 * ϕ[1:-1,1:-1])
         return f
 
-    def add_hole_to_phase_field(self, x, y, radius):
+    def add_hole_to_phase_field(self, x, y, radius, neg=False):
         """
             add_hole_to_phase_field adds a circular hole, centered at (x,y), to
             the phase field. It creates a phase field if it does not already exist
+
+            if neg == True, the hole remains and its outside is excluded
 
             NOTE: this method should be called before calling define
         """
@@ -83,7 +85,10 @@ class IonicModel:
 
         xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
         dist = np.hypot(xx - x, yy - y)
-        self.phase *= np.array(0.5*(np.tanh(dist - radius) + 1.0), dtype=np.float32)
+        if neg:
+            self.phase *= np.array(0.5*(np.tanh(0.1*(radius - dist)) + 1.0), dtype=np.float32)
+        else:
+            self.phase *= np.array(0.5*(np.tanh(dist - radius) + 1.0), dtype=np.float32)
         # we set the minimum phase field at 1e-5 to avoid division by 0 in phase_field
         self.phase = np.maximum(self.phase, 1e-5)
 
@@ -149,7 +154,7 @@ class IonicModel:
         """
         self._sess.run(self._ops[name])
 
-    def run(self, im=None):
+    def run(self, im=None, keep_state=False, block=True):
         """
             runs first defines a TensorFlow Session, attaches the dataflow to it,
             and then run it. The model should be defined first by calling define().
@@ -188,12 +193,17 @@ class IonicModel:
                     if self.phase is not None:
                         image *= self.phase
                     im.imshow(image)
-                    v1 = image[1, self.width//2]
+                    v1 = image[20, self.width//2]
                     if v1 >= 0.5 and v0 < 0.5:
                         cl = (i - last_spike) * self.dt_per_step * self.dt
                         print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, cl))
                         last_spike = i
                     v0 = v1
+
+            if keep_state:
+                self.state = {}
+                for s in self._State:
+                    self.state[s] = self._State[s].eval()
 
             if self.timeline:
                 # options and run_metadata are needed for tracing
@@ -208,7 +218,7 @@ class IonicModel:
                     f.write(chrome_trace)
 
         print('elapsed: %f sec' % (time.time() - then))
-        if im:
+        if block and im:
             im.wait()   # wait until the window is closed
 
     def millisecond_to_step(self, t):
