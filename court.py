@@ -37,6 +37,227 @@ class Courtemanche(IonicModel):
         super().__init__(props)
         self.min_v = -100.0    # mV
         self.max_v = 50.0     # mV
+        self.chronic = True
+        self.fast_states = ['V', '_Na_i_', '_m_', '_h_']
+
+    def init_state_variable(self, state, name, value):
+        if name in state:
+            print('Warning! The state variable arlready exists')
+        state[name] = np.full([self.height, self.width], value, dtype=np.float32)
+
+    def define(self, s1=True):
+        """
+            Defines the tensorflow model
+            It sets ode_op, s2_op and V used by other methods
+        """
+        super().define()
+        state = {}
+        self.init_state_variable(state, 'V', -81.18)
+        self.init_state_variable(state, '_Na_i_', 1.117e+01)
+        self.init_state_variable(state, '_m_', 2.98e-3)
+        self.init_state_variable(state, '_h_', 9.649e-1)
+        self.init_state_variable(state, '_j_', 9.775e-1)
+        self.init_state_variable(state, '_K_i_', 1.39e+02)
+        self.init_state_variable(state, '_oa_', 3.043e-2)
+        self.init_state_variable(state, '_oi_', 9.992e-1)
+        self.init_state_variable(state, '_ua_', 4.966e-3)
+        self.init_state_variable(state, '_ui_', 9.986e-1)
+        self.init_state_variable(state, '_xr_', 3.296e-5)
+        self.init_state_variable(state, '_xs_', 1.869e-2)
+        self.init_state_variable(state, '_Ca_i_', 1.013e-4)
+        self.init_state_variable(state, '_d_', 1.367e-4)
+        self.init_state_variable(state, '_f_', 9.996e-1)
+        self.init_state_variable(state, '_f_Ca_', 7.755e-1)
+        self.init_state_variable(state, '_Ca_rel_', 1.488)
+        self.init_state_variable(state, '_u_', 0.0)
+        self.init_state_variable(state, '_v_', 1.0)
+        self.init_state_variable(state, '_w_', 0.9992)
+        self.init_state_variable(state, '_Ca_up_', 1.488)
+
+        # S1 stimulation: vertical along the left side
+        if s1:
+            state['V'][:,:5] = 20.0
+
+        # define the graph...
+        with tf.device('/device:GPU:0'):
+            # Create variables for simulation state
+            State = {}
+            for s in state:
+                State[s] = tf.Variable(state[s])
+
+            State1 = self.solve(State)
+            self.dt_per_step = 1
+
+            fasts = []
+            slows = []
+            for s in State:
+                if s in self.fast_states:
+                    fasts.append(tf.assign(State[s], State1[s]))
+                else:
+                    slows.append(tf.assign(State[s], State1[s]))
+
+            self._ode_op = tf.group(*fasts)
+            self._ops['slow'] = tf.group(*slows)
+            self._V = State['V']  # V is needed by self.image()
+
+
+    def euler(self, g, Rate, dt):
+        return g + Rate * dt
+
+    def δt(self, name):
+        if name in self.fast_states:
+            return self.dt
+        else:
+            return self.dt * 10
+
+    def solve(self, State):
+        """ Explicit Euler ODE solver """
+        V0 = State['V']
+        V = self.enforce_boundary(V0)
+
+        R = 8.3143              # (joule/mole_kelvin).
+        T = 310;                # (kelvin).
+        F = 96.4867             # (coulomb/millimole).
+        Cm = 100                # Cm is Cm in membrane (picoF).
+        g_Na = 7.8              # fast_sodium_current (nanoS/picoF).
+        Na_o = 140              # (millimolar).
+        K_o = 5.4               # (millimolar).
+        g_to = 0.1652           # transient_outward_K_current (nanoS/picoF).
+        g_Ks = 0.12941176       # slow_delayed_rectifier_K_current (nanoS/picoF).
+        g_Ca_L = 0.12375        # L_type_Ca_channel (nanoS/picoF).
+        Km_Na_i = 10            # sodium_potassium_pump (millimolar).
+        Km_K_o = 1.5            # sodium_potassium_pump (millimolar).
+        i_NaK_max = 0.59933874  # sodium_potassium_pump (picoA/picoF).
+        i_CaP_max = 0.275       # sarcolemmal_calcium_pump_current (picoA/picoF).
+        g_B_Na = 0.0006744375   # background_currents (nanoS/picoF).
+        g_B_Ca = 0.001131       # background_currents (nanoS/picoF).
+        g_B_K = 0               # background_currents (nanoS/picoF).
+        Ca_o = 1.8              # (millimolar).
+        K_rel = 30              # Ca_release_current_from_JSR (per_millisecond).
+        tau_tr = 180            # transfer_current_from_NSR_to_JSR (millisecond).
+        I_up_max = 0.005        # Ca_uptake_current_by_the_NSR (millimolar/millisecond).
+        K_up = 0.00092          # Ca_uptake_current_by_the_NSR (millimolar).
+        Ca_up_max = 15          # Ca_leak_current_by_the_NSR (millimolar).
+        CMDN_max = 0.05         # CMDN_max is CMDN_max in Ca_buffers (millimolar).
+        TRPN_max = 0.07         # TRPN_max is TRPN_max in Ca_buffers (millimolar).
+        CSQN_max = 10           # CSQN_max is CSQN_max in Ca_buffers (millimolar).
+        Km_CMDN = 0.00238       # Km_CMDN is Km_CMDN in Ca_buffers (millimolar).
+        Km_TRPN = 0.0005        # Km_TRPN is Km_TRPN in Ca_buffers (millimolar).
+        Km_CSQN = 0.8           # Km_CSQN is Km_CSQN in Ca_buffers (millimolar).
+        V_cell = 20100          # intracellular_ion_concentrations (micrometre_3).
+        V_i = V_cell * 0.68     # intracellular_ion_concentrations (micrometre_3).
+        tau_f_Ca = 2.0          # L_type_Ca_channel_f_Ca_gate (millisecond).
+        tau_u = 8.0             # Ca_release_current_from_JSR_u_gate (millisecond).
+        V_rel = 0.0048 * V_cell # intracellular_ion_concentrations (micrometre_3).
+        V_up = 0.0552 * V_cell  # intracellular_ion_concentrations (micrometre_3).
+
+        State1 = {}
+
+        if self.chronic:
+            chronic = 1.0
+        else:
+            chronic = 0.0
+
+        with self.jit_scope():
+            inter = self.calc_inter(V, tf)
+
+            State1['_d_'] = self.rush_larsen(State['_d_'], inter['d_infinity'], inter['tau_d'], self.δt('_d_'))
+            State1['_f_'] = self.rush_larsen(State['_f_'], inter['f_infinity'], inter['tau_f'], self.δt('_f_'))
+            State1['_w_'] = self.rush_larsen(State['_w_'], inter['w_infinity'], inter['tau_w'], self.δt('_d_'))
+            State1['_m_'] = self.rush_larsen(State['_m_'], inter['m_inf'], inter['tau_m'], self.δt('_m_'))
+            State1['_h_'] = self.rush_larsen(State['_h_'], inter['h_inf'], inter['tau_h'], self.δt('_h_'))
+            State1['_j_'] = self.rush_larsen(State['_j_'], inter['j_inf'], inter['tau_j'], self.δt('_j_'))
+            State1['_oa_'] = self.rush_larsen(State['_oa_'], inter['oa_infinity'], inter['tau_oa'], self.δt('_oa_'))
+            State1['_oi_'] = self.rush_larsen(State['_oi_'], inter['oi_infinity'], inter['tau_oi'], self.δt('_oi_'))
+            State1['_ua_'] = self.rush_larsen(State['_ua_'], inter['ua_infinity'], inter['tau_ua'], self.δt('_ua_'))
+            State1['_ui_'] = self.rush_larsen(State['_ui_'], inter['ui_infinity'], inter['tau_ui'], self.δt('_ui_'))
+            State1['_xr_'] = self.rush_larsen(State['_xr_'], inter['xr_infinity'], inter['tau_xr'], self.δt('_xr_'))
+            State1['_xs_'] = self.rush_larsen(State['_xs_'], inter['xs_infinity'], inter['tau_xs'], self.δt('_xs_'))
+
+            f_Ca_infinity = tf.reciprocal(1.0 + State['_Ca_i_'] / 0.00035)
+            State1['_f_Ca_'] = self.rush_larsen(State['_f_Ca_'], f_Ca_infinity, tau_f_Ca, self.δt('_f_Ca_'))
+
+            E_K = ((R * T) / F) * tf.log(K_o / State['_K_i_'])
+            i_K1 = inter['i_K1a'] * (V - E_K)
+            i_to = (1.0-0.5*chronic) * Cm * g_to * tf.pow(State['_oa_'], 3) * State['_oi_'] * (V - E_K)
+            i_Kur = (1.0-0.5*chronic) * Cm * inter['g_Kur'] * tf.pow(State['_ua_'], 3) * State['_ui_'] * (V - E_K)
+            i_Kr = inter['i_Kra'] * State['_xr_'] * (V - E_K)
+            i_Ks = Cm * g_Ks * tf.square(State['_xs_']) * (V - E_K)
+            i_NaK = (((Cm * i_NaK_max * inter['f_NaK'] * 1.0) / (1.0 + tf.sqrt(tf.pow(Km_Na_i / State['_Na_i_'], 3)))) * K_o) / (K_o + Km_K_o)
+            i_B_K = Cm * g_B_K * (V - E_K)
+
+            State1['_K_i_'] = self.euler(
+                State['_K_i_'],
+                (2.0 * i_NaK - (i_K1 + i_to + i_Kur + i_Kr + i_Ks + i_B_K)) / (V_i * F),
+                self.δt('_K_i_')
+            )
+
+            E_Na = ((R * T) / F) * tf.log(Na_o / State['_Na_i_'])
+            i_Na = Cm * g_Na * tf.pow(State['_m_'], 3) * State['_h_'] * State['_j_'] * (V - E_Na)
+            i_NaCa = inter['i_NaCaa'] * tf.pow(State['_Na_i_'], 3) - inter['i_NaCab'] * State['_Ca_i_']
+            i_B_Na = Cm * g_B_Na * (V - E_Na)
+
+            State1['_Na_i_'] = self.euler(
+                State['_Na_i_'],
+                (-3.0 * i_NaK - (3.0 * i_NaCa + i_B_Na + i_Na)) / (V_i * F),
+                self.δt('_Na_i_')
+            )
+
+            i_st = 0.0
+            i_Ca_L = (1.0-0.7*chronic) * Cm * g_Ca_L * State['_d_'] * State['_f_'] * State['_f_Ca_'] * (V - 65.0)
+            i_CaP = (Cm * i_CaP_max * State['_Ca_i_']) / (0.0005 + State['_Ca_i_'])
+            E_Ca = ((R * T) / (2.0 * F)) * tf.log(Ca_o / State['_Ca_i_'])
+            i_B_Ca = Cm * g_B_Ca * (V - E_Ca)
+
+            DV = self.euler(
+                V,
+                -(i_Na + i_K1 + i_to + i_Kur + i_Kr + i_Ks + i_B_Na + i_B_Ca + i_NaK + i_CaP + i_NaCa + i_Ca_L + i_st) / Cm,
+                self.δt('V')
+            )
+
+            State1['V'] = DV + self.diff * self.δt('V') * self.laplace(V)
+
+
+            i_rel = K_rel * tf.square(State['_u_']) * State['_v_'] * State['_w_'] * (State['_Ca_rel_'] - State['_Ca_i_'])
+            i_tr = (State['_Ca_up_'] - State['_Ca_rel_']) / tau_tr
+
+            State1['_Ca_rel_'] = self.euler(
+                State['_Ca_rel_'],
+                (i_tr - i_rel) * tf.reciprocal(1.0 + (CSQN_max * Km_CSQN) / tf.square(State['_Ca_rel_'] + Km_CSQN)),
+                self.δt('_Ca_rel_')
+            )
+
+            Fn = 1000.0 * (1.0e-15 * V_rel * i_rel - (1.0e-15 / (2.0 * F)) * (0.5 * i_Ca_L - 0.2 * i_NaCa))
+            u_infinity = tf.reciprocal(1.0 + tf.exp(-(Fn - 3.4175e-13) / 1.367e-15))
+            State1['_u_'] = self.rush_larsen(State['_u_'], u_infinity, tau_u, self.δt('_u_'))
+
+            tau_v = 1.91 + 2.09 * u_infinity
+            v_infinity = 1.0 - tf.reciprocal(1.0 + tf.exp(-(Fn - 6.835e-14) / 1.367e-15))
+            State1['_v_'] = self.rush_larsen(State['_v_'], v_infinity, tau_v, self.δt('_v_'))
+
+            i_up = I_up_max / (1.0 + K_up / State['_Ca_i_'])
+            i_up_leak = (I_up_max * State['_Ca_up_']) / Ca_up_max
+
+            State1['_Ca_up_'] = self.euler(
+                State['_Ca_up_'],
+                i_up - (i_up_leak + (i_tr * V_rel) / V_up),
+                self.δt('_Ca_up_')
+            )
+
+            B1 = (2.0 * i_NaCa - (i_CaP + i_Ca_L + i_B_Ca)) / (2.0 * V_i * F) + (V_up * (i_up_leak - i_up) + i_rel * V_rel) / V_i
+            B2 = 1.0 + (TRPN_max * Km_TRPN) / tf.square(State['_Ca_i_'] + Km_TRPN) + (CMDN_max * Km_CMDN) / tf.square(State['_Ca_i_'] + Km_CMDN)
+
+            State1['_Ca_i_'] = self.euler(
+                State['_Ca_i_'],
+                B1 / B2,
+                self.δt('_Ca_i_')
+            )
+
+            for s in State:
+                if not s in State1:
+                    print('Warning! Missing New State: %s' % s)
+
+            return State1
 
     def calc_inter(self, V, mod=np):
         R = 8.3143          # R in membrane (joule/mole_kelvin).
@@ -63,6 +284,8 @@ class Courtemanche(IonicModel):
 
         inter = {}
 
+        ϵ = V * 1e-20
+
         inter['d_infinity'] = mod.reciprocal(1.0 + mod.exp((V + 10.0) / -8.0))
 
         # note: V + 10 is changed to V + 10.0001 to suppress a warning passing V = -10
@@ -77,7 +300,7 @@ class Courtemanche(IonicModel):
 
         inter['tau_w'] = where(
             mod.abs(V - 7.9) < 1.0e-10,
-            (6.0 * 0.2) / 1.3,
+            ϵ + ((6.0 * 0.2) / 1.3),
             (6.0 * (1.0 - mod.exp(-(V - 7.9) / 5.0))) / ((1.0 + 0.3 * mod.exp(-(V - 7.9) / 5.0)) * 1.0 * (V - 7.9))
         )
 
@@ -85,7 +308,7 @@ class Courtemanche(IonicModel):
 
         alpha_m = where(
             mod.abs(V - -47.13) < 0.001,
-            3.2,
+            ϵ + 3.2,
             (0.32 * (V + 47.13)) / (1.0 - mod.exp(-0.1 * (V + 47.13)))
         )
 
@@ -97,7 +320,7 @@ class Courtemanche(IonicModel):
         alpha_h = where(
             V < -40.0,
             0.135 * mod.exp((V + 80.0) / -6.8),
-            0.0
+            ϵ
         )
 
         beta_h = where(
@@ -112,7 +335,7 @@ class Courtemanche(IonicModel):
         alpha_j = where(
             V < -40.0,
             ((-127140. * mod.exp(0.2444 * V) - 3.474e-05 * mod.exp(-0.04391 * V)) * (V + 37.78)) / (1.0 + mod.exp(0.311 * (V + 79.23))),
-            0.0
+            ϵ
         )
 
         beta_j = where(
@@ -150,13 +373,13 @@ class Courtemanche(IonicModel):
 
         alpha_xr = where(
             mod.abs(V + 14.1) < 1.0e-10,
-            0.0015,
+            ϵ + 0.0015,
             (0.0003 * (V + 14.1)) / (1.0 - mod.exp((V + 14.1) / -5.0))
         )
 
         beta_xr = where(
             mod.abs(V - 3.3328) < 1.0e-10,
-            0.000378361,
+            ϵ + 0.000378361,
             (7.3898e-05 * (V - 3.3328)) / (mod.exp((V - 3.3328) / 5.1237) - 1.0)
         )
 
@@ -165,13 +388,13 @@ class Courtemanche(IonicModel):
 
         alpha_xs = where(
             mod.abs(V - 19.9) < 1.0e-10,
-            0.00068,
+            ϵ + 0.00068,
             (4.0e-05 * (V - 19.9)) / (1.0 - mod.exp((V - 19.9) / -17.0))
         )
 
         beta_xs = where(
             mod.abs(V - 19.9) < 1.0e-10,
-            0.000315,
+            ϵ + 0.000315,
             (3.5e-05 * (V - 19.9)) / (mod.exp((V - 19.9) / 9.0) - 1.0)
         )
 
@@ -193,113 +416,6 @@ class Courtemanche(IonicModel):
         inter['i_Kra'] = (Cm * g_Kr) / (1.0 + mod.exp((V + 15.0) / 22.4))  # * state[_xr_] * (V - E_K)
 
         return inter
-
-    def define(self, s1=True):
-        """
-            Defines the tensorflow model
-            It sets ode_op, s2_op and V used by other methods
-        """
-        super().define()
-        # the initial values of the state variables
-        v_init = np.full([self.height, self.width], -84.624, dtype=np.float32)
-        c_init = np.full([self.height, self.width], 1e-4, dtype=np.float32)
-        m_init = np.full([self.height, self.width], 0.01, dtype=np.float32)
-        h_init = np.full([self.height, self.width], 0.988, dtype=np.float32)
-        j_init = np.full([self.height, self.width], 0.975, dtype=np.float32)
-        d_init = np.full([self.height, self.width], 0.003, dtype=np.float32)
-        f_init = np.full([self.height, self.width], 0.994, dtype=np.float32)
-        xi_init = np.full([self.height, self.width], 0.0001, dtype=np.float32)
-
-        # S1 stimulation: vertical along the left side
-        if s1:
-            v_init[:,1] = 10.0
-
-        # define the graph...
-        with tf.device('/device:GPU:0'):
-            # Create variables for simulation state
-            V  = tf.Variable(v_init, name='V')
-            C  = tf.Variable(c_init, name='C')
-            M  = tf.Variable(m_init, name='M')
-            H  = tf.Variable(h_init, name='H')
-            J  = tf.Variable(j_init, name='J')
-            D  = tf.Variable(d_init, name='D')
-            F  = tf.Variable(f_init, name='F')
-            XI  = tf.Variable(xi_init, name='XI')
-
-            states = [(V, C, M, H, J, D, F, XI)]
-
-            if self.skip:
-                s = self.solve(states[0], 5)
-                states.append(s)
-                for i in range(4):
-                    states.append(self.solve(states[-1], 0))
-                self.dt_per_step = 5
-            else:
-                for i in range(5):
-                    states.append(self.solve(states[-1], 1))
-                self.dt_per_step = 5
-
-            V1, C1, M1, H1, J1, D1, F1, XI1 = states[-1]
-
-            self._ode_op = tf.group(
-                tf.assign(V, V1, name='set_V'),
-                tf.assign(C, C1, name='set_C'),
-                tf.assign(M, M1, name='set_M'),
-                tf.assign(H, H1, name='set_H'),
-                tf.assign(J, J1, name='set_J'),
-                tf.assign(D, D1, name='set_D'),
-                tf.assign(F, F1, name='set_F'),
-                tf.assign(XI, XI1, name='set_X')
-                )
-
-            self._V = V  # V is needed by self.image()
-
-
-    def solve(self, state, n=1):
-        """ Explicit Euler ODE solver """
-        V, C, M, H, J, D, F, XI = state
-        V0 = self.enforce_boundary(V)
-        dt = self.dt
-
-        with self.jit_scope():
-            if self.cheby:
-                M1, H1, J1, D1, F1, XI1 = self.update_gates_with_cheby(V0, M, H, J, D, F, XI, n)
-            else:
-                M1, H1, J1, D1, F1, XI1 = self.update_gates_without_cheby(V0, M, H, J, D, F, XI, n)
-
-            # Current Multipliers
-            C_K1 = 1.0
-            C_x1 = 1.0
-            C_Na = 1.0
-            C_s = 1.0
-            D_Ca = 0.0
-            D_Na = 0.0
-            g_s = 0.09
-            g_Na = 4.0
-            g_NaC = 0.005
-            ENa = 50.0 + D_Na
-            C_m = 1.0
-
-            k = tf.exp(0.04 * V0, name='k')
-            iK1 = (C_K1 * (0.35 *(4*(29.64*k - 1) / ( 69.41*k*k + 8.33*k) +
-                        0.2 * ((V0 + 23) / (1 - 0.3985 / k )))))
-
-            ix1 = (C_x1 * XI * 0.8 * (21.76*k - 1) / (4.055*k))
-
-            iNa = C_Na * (g_Na*M*M*M*H*J + g_NaC) * (V0 - ENa)
-
-            ECa = D_Ca - 82.3 - 13.0278 * tf.log(C)
-            iCa = C_s * g_s * D * F * (V0 - ECa)
-
-            I_sum = iK1 + ix1 + iNa + iCa
-
-            V1 = (tf.clip_by_value(V0 + self.diff * self.dt * self.laplace(V0)
-                    - dt * I_sum / C_m, -85.0, 25.0))
-
-            dC = -1.0e-7*iCa + 0.07*(1.0e-7 - C)
-            C1 = C + dt * dC
-
-            return (V1, C1, M1, H1, J1, D1, F1, XI1)
 
     def update_gates_without_cheby(self, V0, M, H, J, D, F, XI, n):
         """
@@ -332,6 +448,22 @@ class Courtemanche(IonicModel):
             F1 = F
 
         return M1, H1, J1, D1, F1, XI1
+
+    def calc_inter_cheby(self, V):
+        dt = self.dt
+        # note: x ranges from -1 to +1 and is input to Chebyshev polynomials
+        x = (V - 0.5*(self.max_v+self.min_v)) / (0.5*(self.max_v-self.min_v))
+
+        # Ts is a list [S_0,...,S_{\deg}], where S_i is the leading term of
+        # S_i
+        Ts = self.calc_chebyshev_leading(x, 12)
+
+        v = np.linspace(self.min_v, self.max_v, 5001)
+        inter0 = self.calc_inter(v, np)
+        inter = {}
+        for s in inter0:
+            inter[s] = self.expand_chebyshev(Ts, v, inter0[s])
+        return inter
 
     def update_gates_with_cheby(self, V0, M, H, J, D, F, XI, n, deg=8):
         """
@@ -480,15 +612,15 @@ if __name__ == '__main__':
         'dt': 0.1,              # integration time step in ms
         'dt_per_plot': 10,      # screen refresh interval in dt unit
         'diff': 0.809,          # diffusion coefficient
-        'duration': 1000,       # simulation duration in ms
+        'duration': 2000,       # simulation duration in ms
         'skip': False,          # optimization flag: activate multi-rate
         'cheby': True,          # optimization flag: activate Chebysheb polynomials
         'timeline': False,      # flag to save a timeline (profiler)
-        'timeline_name': 'timeline_br.json',
+        'timeline_name': 'timeline_court.json',
         'save_graph': False     # flag to save the dataflow graph
     }
 
-    model = BeelerReuter(config)
+    model = Courtemanche(config)
     model.add_hole_to_phase_field(150, 200, 40) # center=(150,200), radius=40
     model.define()
     model.add_pace_op('s2', 'luq', 10.0)
@@ -500,5 +632,7 @@ if __name__ == '__main__':
     s2 = model.millisecond_to_step(300)     # 300 ms
 
     for i in model.run(im):
+        if i % 10 == 0:
+            model.fire_op('slow')
         if i == s2:
             model.fire_op('s2')
