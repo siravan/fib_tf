@@ -158,7 +158,7 @@ class Courtemanche(IonicModel):
         else:
             chronic = 0.0
 
-        with self.jit_scope():
+        with self: #self.jit_scope():
             inter = self.calc_inter(V, tf)
 
             State1['_d_'] = self.rush_larsen(State['_d_'], inter['d_infinity'], inter['tau_d'], self.δt('_d_'))
