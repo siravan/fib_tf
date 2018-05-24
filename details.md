@@ -102,7 +102,7 @@ and,
   \end{cases}.
 \]
 
-Note that you can find the value of the model parameters, such as $\tau_{v1}^-$ and $u_v$, in **fenton.differentiate** (file **fenton.py**). Next, the instantaneous currents are calculated
+Note that you can find the value of the model parameters, such as $\tau_{v1}^-$ and $u_v$, in **fenton.differentiate** (file [fenton.py](https://github.com/siravan/fib_tf/blob/master/fenton.py)). Next, the instantaneous currents are calculated
 
 \[
   I_{fi} =
@@ -162,13 +162,13 @@ and,
 
 The TensorFlow website has an [example](https://www.tensorflow.org/tutorials/pdes) of solving a simple PDE. This example has served as the starting point for **fib_tf**; albeit, in the end, only a tiny fraction of its code remained in the final code base.
 
-In this section, we present a straightforward translation of the *4v* model into the TensorFlow code by modifying the above example. You can find the source code in **fenton_simple.py**. As we will see, the resulting code is not very efficient. Afterward, we will discuss various modifications to make it faster.
+In this section, we present a straightforward translation of the *4v* model into the TensorFlow code by modifying the above example. You can find the source code in [fenton_simple.py](https://github.com/siravan/fib_tf/blob/master/fenton_simple.py). As we will see, the resulting code is not very efficient. Afterward, we will discuss various modifications to make it faster.
 
 In a typical TensorFlow application, we first define a TensorFlow **dataflow graph**. A dataflow graph is a directed acyclic graph, where nodes correspond to tensors (general multi-dimensional arrays) or operations on tensors, and links denote data movement between the nodes. Such a graph can be executed once or multiple times.
 
-**fenton_simple.py** begins with few utility functions. **laplace()** and its helper functions (**make_kernel()** and **simple_conv()**) are copied verbatim from the  [example](https://www.tensorflow.org/tutorials/pdes). **enforce_boundary()** ensures a no-flux (Neumann) boundary condition.
+[fenton_simple.py](https://github.com/siravan/fib_tf/blob/master/fenton_simple.py) begins with few utility functions. **laplace()** and its helper functions (**make_kernel()** and **simple_conv()**) are copied verbatim from the  [example](https://www.tensorflow.org/tutorials/pdes). **enforce_boundary()** ensures a no-flux (Neumann) boundary condition.
 
-The TensorFlow example also defines a utility function **DisplayArray()** to visualize the results of simulation. This function only works in a Jupyter notebook environment. I prefer a more general visualization routine that also works from ipython and command line. Therefore, instead of **DisplayArray()**, we import **Screen** from **screen.py** that plots on an SDL2 window.
+The TensorFlow example also defines a utility function **DisplayArray()** to visualize the results of simulation. This function only works in a Jupyter notebook environment. I prefer a more general visualization routine that also works from ipython and command line. Therefore, instead of **DisplayArray()**, we import **Screen** from [screen.py](https://github.com/siravan/fib_tf/blob/master/screen.py) that plots on an SDL2 window.
 
 The bulk of the code is contained in the class **Fenton4vSimple**. The model dataflow graph is defined in **Fenton4vSimple.define()**, where we introduce four numpy arrays to represent the shape and initial values of the four state variables:
 
@@ -218,7 +218,7 @@ It creates a spiral wave by applying a cross-stimulation protocol (the S1-S2 pro
 
 ![](https://siravan.github.io/fib_tf/4v.png)
 
-On my desktop computer (1.7 GHz quad-code running Ubuntu 14.04 with an NVidia GTX-1080 GPU), **fenton_simple.py** takes ~11 seconds to run one second of simulation over a 512 x 512 medium (assuming no real-time screen update). This is not good! A hand-optimized CUDA code runs the same thing in less than a second. In the following sections, we describe optimization tricks that improve the timing by a factor of 4.
+On my desktop computer (1.7 GHz quad-code running Ubuntu 14.04 with an NVidia GTX-1080 GPU), [fenton_simple.py](https://github.com/siravan/fib_tf/blob/master/fenton_simple.py) takes ~11 seconds to run one second of simulation over a 512 x 512 medium (assuming no real-time screen update). This is not good! A hand-optimized CUDA code runs the same thing in less than a second. In the following sections, we describe optimization tricks that improve the timing by a factor of 4.
 
 # <a name='the-root-cause-of-slowness'></a> The Root Cause of Slowness
 
@@ -238,7 +238,7 @@ Fortunately, the TensorFlow developers have recognized this problem and have dev
 
 TensorFlow has the very exciting capability of using [JIT compilation](https://www.tensorflow.org/performance/xla/jit) to combine multiple atomic CUDA kernels into one large kernel. JIT compilation mitigates the performance penalty of having many smaller kernels. However, it is still not available in the stock versions of TensorFlow (at least not in version 1.7). To enable it, you need to [compile](https://www.tensorflow.org/install/install_sources) TensorFlow from source.
 
-**fenton_jit.py** is a modified version of **fenton_simple.py**. The main change is in **fenton_simple.solve()**, where the Euler integration steps are moved inside a *jit_scope*.
+[fenton_jit.py](https://github.com/siravan/fib_tf/blob/master/fenton_jit.py) is a modified version of [fenton_simple.py](https://github.com/siravan/fib_tf/blob/master/fenton_simple.py). The main change is in **fenton_simple.solve()**, where the Euler integration steps are moved inside a *jit_scope*.
 
 ```python
 scope = tf.contrib.compiler.jit.experimental_jit_scope()
@@ -261,7 +261,7 @@ One time step takes a little over $500\,\mu\text{s}$. Also note there are only f
 
 JIT compilation is the main, but not the sole, optimization trick to improve the performance. In this section, we describe few other improvements that together raise the performance of the *4v* solver by another factor of 1.5-2.
 
-The final version of the *4v* solver is **fenton.py**. Note that we have re-factored the code into two files. The model-independent codes are collected in a *virtual* base class **Ionic** (in **ionic.py**). The model-specific code is structured as a class **Fenton4v** (defined in **fenton.py**) that extends **Ionic**. This version of the *4v* solver takes 2.8 seconds per second of simulation. For comparison, it takes 50 seconds per second of simulation while running on CPU.
+The final version of the *4v* solver is [fenton.py](https://github.com/siravan/fib_tf/blob/master/fenton.py). Note that we have re-factored the code into two files. The model-independent codes are collected in a *virtual* base class **Ionic** (in [ionic.py](https://github.com/siravan/fib_tf/blob/master/ionic.py)). The model-specific code is structured as a class **Fenton4v** (defined in [fenton.py](https://github.com/siravan/fib_tf/blob/master/fenton.py)) that extends **Ionic**. This version of the *4v* solver takes 2.8 seconds per second of simulation. For comparison, it takes 50 seconds per second of simulation while running on CPU.
 
 ## <a name='laplacian'></a> Laplacian
 
@@ -313,7 +313,7 @@ Another benefit of graph unrolling is to allow for [multi-rate integration](#mul
 
 # <a name='the-beeler-reuter-ionic-model'></a> The Beeler-Reuter Ionic Model
 
-We have chosen the [Beeler-Reuter ventricular myocyte model](https://www.ncbi.nlm.nih.gov/pubmed/?term=874889) as our second example. The model can be found in **BeelerReuter.solve()** in the file **br.py**.
+We have chosen the [Beeler-Reuter ventricular myocyte model](https://www.ncbi.nlm.nih.gov/pubmed/?term=874889) as our second example. The model can be found in **BeelerReuter.solve()** in the file [br.py](https://github.com/siravan/fib_tf/blob/master/br.py).
 
 The Beeler-Reuter model has eight variables: the transmembrane potential ($v$), sodium-channel activation and inactivation gates ($m$ and $h$, similar to the Hodgkin-Huxley model), with an additional slow inactivation gate ($j$), calcium-channel activation and deactivations gates ($d$ and $f$), a time-dependent outward potassium current gate ($x_1$), and intracellular calcium concentration ($c$). There are four currents: a sodium current ($i_{Na}$), a calcium current ($i_{s}$), and two potassium currents, one time-dependent ($i_{x_1}$) and one time-independent ($i_{K_1}$).
 
@@ -343,7 +343,7 @@ In the code base, $x_{\infty}$ and $\tau_x$ are calculated in **BeelerReuter.cal
 
 \[ \alpha = \frac{C_1 e^{C_2(v + C_3)} + C_4(v + C_5) } { e^{C_6(v + C_7) }}.\]
 
-The values of $C$s are found in the file **br.py** as an array **ab_coef** and are used to calculate $\alpha$s and $\beta$s in **BeelerReuter.calc_alpha_beta_np()**. The calculations are done by numpy during the graph definition phase (the *setup* phase) and are considered constants in the TensorFlow graph. **Ionic.rush_larsen()** updates the gating variables (see [Rush-Larsen](#the-rush-larsen-method) method) based on the values of $\alpha$s and $\beta$s.
+The values of $C$s are found in the file [br.py](https://github.com/siravan/fib_tf/blob/master/br.py) as an array **ab_coef** and are used to calculate $\alpha$s and $\beta$s in **BeelerReuter.calc_alpha_beta_np()**. The calculations are done by numpy during the graph definition phase (the *setup* phase) and are considered constants in the TensorFlow graph. **Ionic.rush_larsen()** updates the gating variables (see [Rush-Larsen](#the-rush-larsen-method) method) based on the values of $\alpha$s and $\beta$s.
 
 After updating the gating variables, they are used to find the spontaneous ionic currents. We have
 
@@ -380,9 +380,9 @@ This time, the result looks like this
 
 The spiral wave anchors to a circular obstacle created by phase field methodology. See [below](#phase-field) for details.
 
-**br.py** already employs most of the optimization steps discuss above (JIT compilation, graph unrolling...). On my computer, this model takes 8.5 seconds per second of simulation compared to 2.8 seconds for the *4v* model. Considering twice the number of variables and more complicated formulas, a factor of 3 slow down is reasonable.
+[br.py](https://github.com/siravan/fib_tf/blob/master/br.py) already employs most of the optimization steps discuss above (JIT compilation, graph unrolling...). On my computer, this model takes 8.5 seconds per second of simulation compared to 2.8 seconds for the *4v* model. Considering twice the number of variables and more complicated formulas, a factor of 3 slow down is reasonable.
 
-But we are not done yet! There are still some optimizations tricks that can improve the performance even further. We will discuss three such techniques: the Rush-Larsen method, the Chebyshev polynomials and multi-rate integration. These three methods are already coded in **br.py**. You can enable/disable the Chebyshev polynomials and multi-rate integration by editing **br.py** (in the `if __name__ == '__main__':` section on the bottom of the file) and change `cheby` to `True` to enable the Chebyshev polynomials or `skip` to `True` to enable the multi-rate integration. We can achieve a factor of 2-2.5 speed up by activating both:
+But we are not done yet! There are still some optimizations tricks that can improve the performance even further. We will discuss three such techniques: the Rush-Larsen method, the Chebyshev polynomials and multi-rate integration. These three methods are already coded in [br.py](https://github.com/siravan/fib_tf/blob/master/br.py). You can enable/disable the Chebyshev polynomials and multi-rate integration by editing [br.py](https://github.com/siravan/fib_tf/blob/master/br.py) (in the `if __name__ == '__main__':` section on the bottom of the file) and change `cheby` to `True` to enable the Chebyshev polynomials or `skip` to `True` to enable the multi-rate integration. We can achieve a factor of 2-2.5 speed up by activating both:
 
 <a name='table1'>**Table 1**</a>
 
@@ -552,7 +552,7 @@ This is essentially the same as the reaction-diffusion equation with the additio
 
 **Ionic.laplace**, with the help of **Ionic.phase_field**, calculates the correction term and adds it to the Laplacian. The phase field itself is modified by **ionic.add_hole_to_phase_field** that places a circular hole in the phase field.
 
-For example, the `if __name__ == '__main__'` section of **br.py** adds a circular hole of radius 40 pixels and centered at (150, 200) to the phase field by calling
+For example, the `if __name__ == '__main__'` section of [br.py](https://github.com/siravan/fib_tf/blob/master/br.py) adds a circular hole of radius 40 pixels and centered at (150, 200) to the phase field by calling
 
 ```python
 model.add_hole_to_phase_field(150, 200, 40)
