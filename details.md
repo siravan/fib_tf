@@ -16,7 +16,7 @@ The main power of TensorFlow that distinguishes it from many other computational
     * [Laplacian](#laplacian)
     * [Graph Unrolling](#graph-unrolling)
 * [The Beeler-Reuter Ionic Model](#the-beeler-reuter-ionic-model)
-    * [The Rush-Larsen Method](the-rush-larsen-method)
+    * [The Rush-Larsen Method](#the-rush-larsen-method)
     * [Using the Chebyshev Polynomials](#using-the-chebyshev-polynomials)
     * [Multi-rate Integration](#multi-rate-integration)
 * [Phase Field](#phase-field)
@@ -33,7 +33,7 @@ Our goal is to optimize the **fib_tf** code to make its running time as close as
 
 In this document, we first describe a straightforward translation of a cardiac model into TensorFlow. We then explain various optimization tricks needed to make **fib_tf** performance acceptable.
 
-There are more than 100 different ionic models that describe cardiac electrical activity in various degrees of detail (see this page for an overview of the available models). Most are based on the classic Hodgkin-Huxley model and define the time-evolution of different transmembrane and sarcoplasmic ionic currents in the form of nonlinear first-order ODEs. The state vector for these models includes the transmembrane voltage, gating variables, and ionic concentrations. By nature, these models have to deal with different time scales and are therefore classified as *stiff*. Commonly, these models are solved using the explicit Euler method, usually with a closed form for the integration of the gating variables ([The Rush-Larsen Method](the-rush-larsen-method)). Other techniques used are the implicit Euler and adaptive time-step methods. Higher order integration methods such as Runge-Kutta and linear multi-step methods cannot overcome the stiffness and are not particularly helpful.
+There are more than 100 different ionic models that describe cardiac electrical activity in various degrees of detail (see this page for an overview of the available models). Most are based on the classic Hodgkin-Huxley model and define the time-evolution of different transmembrane and sarcoplasmic ionic currents in the form of nonlinear first-order ODEs. The state vector for these models includes the transmembrane voltage, gating variables, and ionic concentrations. By nature, these models have to deal with different time scales and are therefore classified as *stiff*. Commonly, these models are solved using the explicit Euler method, usually with a closed form for the integration of the gating variables ([The Rush-Larsen Method](#the-rush-larsen-method)). Other techniques used are the implicit Euler and adaptive time-step methods. Higher order integration methods such as Runge-Kutta and linear multi-step methods cannot overcome the stiffness and are not particularly helpful.
 
 To study wave progression, 1D (cable), 2D and 3D cardiac models are constructed by coupling up to millions of ODEs together. Until a few years ago, simulating one second of cardiac activity in a detailed 3D model with realistic ionic currents could easily take upwards of an hour. With the advent of massively parallel architectures (especially GPUs), this task can now be done with near real-time efficiency.
 
@@ -309,7 +309,7 @@ U1, V1, W1, S1 = states[-1]
 
 Currently, this trick improves the performance by allowing the TensorFlow optimizer to prune the model graph and to remove some operations. For example, the **tf.pad** operation in **enforce_boundary()** is removed from between the fused kernels. What it does not yet do is to generate a large fused kernel by fusing all the individual kernels together. However, I'm not aware of any theoretical reason why this cannot be done. Hopefully, future versions of the TensorFlow JIT compiler become smart enough to handles this situation.
 
-Another benefit of graph unrolling is to allow for multi-rate integration (see [below](#multi-rate-integration)).
+Another benefit of graph unrolling is to allow for [multi-rate integration](#multi-rate-integration).
 
 # <a name='the-beeler-reuter-ionic-model'></a> The Beeler-Reuter Ionic Model
 

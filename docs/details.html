@@ -139,27 +139,6 @@
   width: 25em !important;
 }
 
-pre.editor-colors .gutter .line-number {
-  /* Use CSS specificity to force errors to override warnings and info markers */
-  /* Use CSS specificity to force warnings to override info markes. */
-}
-pre.editor-colors .gutter .line-number.latex-error,
-pre.editor-colors .gutter .line-number.latex-error.latex-warning,
-pre.editor-colors .gutter .line-number.latex-error.latex-info,
-pre.editor-colors .gutter .line-number.latex-error.latex-warning.latex-info {
-  border-left: 2px solid #d13b2e;
-  padding-left: calc(0.5em - 2px);
-}
-pre.editor-colors .gutter .line-number.latex-warning,
-pre.editor-colors .gutter .line-number.latex-warning.latex-info {
-  border-left: 2px solid #ad7c0b;
-  padding-left: calc(0.5em - 2px);
-}
-pre.editor-colors .gutter .line-number.latex-info {
-  border-left: 2px solid #0f82e6;
-  padding-left: calc(0.5em - 2px);
-}
-
 pre.editor-colors {
   background-color: #fafafa;
   color: #383a42;
@@ -591,7 +570,7 @@ pre.editor-colors { overflow: auto; }</style>
 </li>
 <li><a href="#the-beeler-reuter-ionic-model">The Beeler-Reuter Ionic Model</a>
 <ul>
-<li><a href="the-rush-larsen-method">The Rush-Larsen Method</a></li>
+<li><a href="#the-rush-larsen-method">The Rush-Larsen Method</a></li>
 <li><a href="#using-the-chebyshev-polynomials">Using the Chebyshev Polynomials</a></li>
 <li><a href="#multi-rate-integration">Multi-rate Integration</a></li>
 </ul>
@@ -604,7 +583,7 @@ pre.editor-colors { overflow: auto; }</style>
 <p><strong>fib_tf</strong> is designed to run on a GPU (it can also run on CPU, but slower). Cardiac electrophysiology models are particularly suitable for running on massively parallel architectures such as GPU, as the coupling between ODEs is through Laplacian, which takes only a small fraction of the total computational cost.</p>
 <p>Our goal is to optimize the <strong>fib_tf</strong> code to make its running time as close as possible to a hand-optimized CUDA C++ code running the same model.</p>
 <p>In this document, we first describe a straightforward translation of a cardiac model into TensorFlow. We then explain various optimization tricks needed to make <strong>fib_tf</strong> performance acceptable.</p>
-<p>There are more than 100 different ionic models that describe cardiac electrical activity in various degrees of detail (see this page for an overview of the available models). Most are based on the classic Hodgkin-Huxley model and define the time-evolution of different transmembrane and sarcoplasmic ionic currents in the form of nonlinear first-order ODEs. The state vector for these models includes the transmembrane voltage, gating variables, and ionic concentrations. By nature, these models have to deal with different time scales and are therefore classified as <em>stiff</em>. Commonly, these models are solved using the explicit Euler method, usually with a closed form for the integration of the gating variables (<a href="the-rush-larsen-method">The Rush-Larsen Method</a>). Other techniques used are the implicit Euler and adaptive time-step methods. Higher order integration methods such as Runge-Kutta and linear multi-step methods cannot overcome the stiffness and are not particularly helpful.</p>
+<p>There are more than 100 different ionic models that describe cardiac electrical activity in various degrees of detail (see this page for an overview of the available models). Most are based on the classic Hodgkin-Huxley model and define the time-evolution of different transmembrane and sarcoplasmic ionic currents in the form of nonlinear first-order ODEs. The state vector for these models includes the transmembrane voltage, gating variables, and ionic concentrations. By nature, these models have to deal with different time scales and are therefore classified as <em>stiff</em>. Commonly, these models are solved using the explicit Euler method, usually with a closed form for the integration of the gating variables (<a href="#the-rush-larsen-method">The Rush-Larsen Method</a>). Other techniques used are the implicit Euler and adaptive time-step methods. Higher order integration methods such as Runge-Kutta and linear multi-step methods cannot overcome the stiffness and are not particularly helpful.</p>
 <p>To study wave progression, 1D (cable), 2D and 3D cardiac models are constructed by coupling up to millions of ODEs together. Until a few years ago, simulating one second of cardiac activity in a detailed 3D model with realistic ionic currents could easily take upwards of an hour. With the advent of massively parallel architectures (especially GPUs), this task can now be done with near real-time efficiency.</p>
 <h1><a name="4v-cardiac-model"></a> <em>4v</em> Cardiac Model</h1>
 <p>Let’s start by writing a simple 2D solver for the <a href="http://www.heartrhythmjournal.com/article/S1547-5271(07)00874-0/fulltext">Cherry-Ehrlich-Nattel-Fenton</a> 4-variable atrial model (<em>4v</em> from here on). With only four state variables, this model provides a good entry point without being trivial.</p>
@@ -769,7 +748,7 @@ pre.editor-colors { overflow: auto; }</style>
 <span class="syntax--source syntax--python"><span>U1</span><span>, </span><span>V1</span><span>, </span><span>W1</span><span>, </span><span>S1</span><span> </span><span class="syntax--keyword syntax--operator syntax--assignment syntax--python"><span>=</span></span><span> </span><span class="syntax--meta syntax--item-access syntax--python"><span>states</span><span class="syntax--punctuation syntax--definition syntax--arguments syntax--begin syntax--python"><span>[</span></span><span class="syntax--meta syntax--item-access syntax--arguments syntax--python"><span class="syntax--keyword syntax--operator syntax--arithmetic syntax--python"><span>-</span></span><span class="syntax--constant syntax--numeric syntax--integer syntax--decimal syntax--python"><span>1</span></span></span><span class="syntax--punctuation syntax--definition syntax--arguments syntax--end syntax--python"><span>]</span></span></span></span>
 </pre>
 <p>Currently, this trick improves the performance by allowing the TensorFlow optimizer to prune the model graph and to remove some operations. For example, the <strong>tf.pad</strong> operation in <strong>enforce_boundary()</strong> is removed from between the fused kernels. What it does not yet do is to generate a large fused kernel by fusing all the individual kernels together. However, I’m not aware of any theoretical reason why this cannot be done. Hopefully, future versions of the TensorFlow JIT compiler become smart enough to handles this situation.</p>
-<p>Another benefit of graph unrolling is to allow for multi-rate integration (see <a href="#multi-rate-integration">below</a>).</p>
+<p>Another benefit of graph unrolling is to allow for <a href="#multi-rate-integration">multi-rate integration</a>.</p>
 <h1><a name="the-beeler-reuter-ionic-model"></a> The Beeler-Reuter Ionic Model</h1>
 <p>We have chosen the <a href="https://www.ncbi.nlm.nih.gov/pubmed/?term=874889">Beeler-Reuter ventricular myocyte model</a> as our second example. The model can be found in <strong>BeelerReuter.solve()</strong> in the file <strong><a href="http://br.py">br.py</a></strong>.</p>
 <p>The Beeler-Reuter model has eight variables: the transmembrane potential (<span class="math"><script type="math/tex">v</script></span>), sodium-channel activation and inactivation gates (<span class="math"><script type="math/tex">m</script></span> and <span class="math"><script type="math/tex">h</script></span>, similar to the Hodgkin-Huxley model), with an additional slow inactivation gate (<span class="math"><script type="math/tex">j</script></span>), calcium-channel activation and deactivations gates (<span class="math"><script type="math/tex">d</script></span> and <span class="math"><script type="math/tex">f</script></span>), a time-dependent outward potassium current gate (<span class="math"><script type="math/tex">x_1</script></span>), and intracellular calcium concentration (<span class="math"><script type="math/tex">c</script></span>). There are four currents: a sodium current (<span class="math"><script type="math/tex">i_{Na}</script></span>), a calcium current (<span class="math"><script type="math/tex">i_{s}</script></span>), and two potassium currents, one time-dependent (<span class="math"><script type="math/tex">i_{x_1}</script></span>) and one time-independent (<span class="math"><script type="math/tex">i_{K_1}</script></span>).</p>
@@ -802,10 +781,10 @@ pre.editor-colors { overflow: auto; }</style>
 <p>To complete the model, we need to calculate the two potassium currents,</p>
 <span class="math"><script type="math/tex; mode=display"> i_{K_1} =
         g_{K_1}.\frac{e^{0.04(v+85)}-1}{e^{0.08(v+53)} + e^{0.04(v+53)}} +
-        h_{K_1}.\frac{0.2(v+23)}{1 - e^{-0.04(v+23)}},
+        h_{K_1}.\frac{0.2(v+23)}{1 - e^{-0.04(v+23)}},    
 </script></span>
 <p>and,</p>
-<span class="math"><script type="math/tex; mode=display">i_{x_1} = g_{x_1} . x_1 . \frac{e^{0.04(v+77)}-1}{e^{0.04(v+35)}},
+<span class="math"><script type="math/tex; mode=display">i_{x_1} = g_{x_1} . x_1 . \frac{e^{0.04(v+77)}-1}{e^{0.04(v+35)}}, 
 </script></span>
 <p>where <span class="math"><script type="math/tex">g_{K_1}</script></span>, <span class="math"><script type="math/tex">h_{K_1}</script></span>, and <span class="math"><script type="math/tex">g_{x_1}</script></span> are channel conductance. Note that in the code we have used an equivalent form of the last two equations by factoring out the exponentials using an accessory variable <span class="math"><script type="math/tex">k = \exp(0.04v)</script></span>.</p>
 <p>We can run the baseline <em>Beeler-Reuter</em> solver as</p>
@@ -844,7 +823,7 @@ pre.editor-colors { overflow: auto; }</style>
 <span class="math"><script type="math/tex; mode=display">dx / dt = \left(x_{\infty}(v) - x \right) / \tau_x(v).
 </script></span>
 <p>If we assume that <span class="math"><script type="math/tex">x</script></span> changes on a faster time-scale than <span class="math"><script type="math/tex">x_{\infty}</script></span> and <span class="math"><script type="math/tex">\tau_x</script></span> (an assumption generally true for the Hodgkin-Huxley type models), we can considered <span class="math"><script type="math/tex">x_{\infty}</script></span> and <span class="math"><script type="math/tex">\tau_x</script></span> constant for the duration of <span class="math"><script type="math/tex">\Delta{t}</script></span> and perform a direct integration of Eq. 27 to obtain</p>
-<span class="math"><script type="math/tex; mode=display">x(t + \Delta{t}) = x_{\infty} - (x_{\infty} - x)\,e^{-\Delta{t}/\tau_x}.
+<span class="math"><script type="math/tex; mode=display">x(t + \Delta{t}) = x_{\infty} - (x_{\infty} - x)\,e^{-\Delta{t}/\tau_x}. 
 </script></span>
 <p>This equation is the basis of the Rush-Larsen method and is coded essentially directly in <strong>Ionin.rush_larsen()</strong></p>
 <pre class="editor-colors lang-python"><span class="syntax--source syntax--python"><span class="syntax--meta syntax--function syntax--python"><span class="syntax--storage syntax--type syntax--function syntax--python"><span>def</span></span><span> </span><span class="syntax--entity syntax--name syntax--function syntax--python"><span>rush_larsen</span></span><span class="syntax--punctuation syntax--definition syntax--parameters syntax--begin syntax--python"><span>(</span></span><span class="syntax--meta syntax--function syntax--parameters syntax--python"><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>self</span></span><span class="syntax--punctuation syntax--separator syntax--parameters syntax--python"><span>,</span></span><span> </span><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>g</span></span><span class="syntax--punctuation syntax--separator syntax--parameters syntax--python"><span>,</span></span><span> </span><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>g_inf</span></span><span class="syntax--punctuation syntax--separator syntax--parameters syntax--python"><span>,</span></span><span> </span><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>g_tau</span></span><span class="syntax--punctuation syntax--separator syntax--parameters syntax--python"><span>,</span></span><span> </span><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>dt</span></span><span class="syntax--punctuation syntax--separator syntax--parameters syntax--python"><span>,</span></span><span> </span><span class="syntax--variable syntax--parameter syntax--function syntax--python"><span>name</span></span><span class="syntax--keyword syntax--operator syntax--assignment syntax--python"><span>=</span></span><span class="syntax--constant syntax--language syntax--python"><span>None</span></span></span><span class="syntax--punctuation syntax--definition syntax--parameters syntax--end syntax--python"><span>)</span></span><span class="syntax--punctuation syntax--section syntax--function syntax--begin syntax--python"><span>:</span></span></span></span>
@@ -856,20 +835,20 @@ pre.editor-colors { overflow: auto; }</style>
 <p>It is reasonably straightforward to implement lookup tables running on a CPU in programming languages like C, C++, and Fortran (the historical high-performance computing choices); notwithstanding subtle issues with cache coherence. The situation is more interesting when dealing with GPUs. Lookup tables are located in the global memory. Considering that global memory access is the primary bottleneck of most GPU applications, it is usually more efficient to recalculate the intermediate parameters each time than doing a table lookup. However, GPUs are designed with graphic acceleration in mind and lookup tables are ubiquitous in graphic applications. Therefore, they have specialized hardware to accelerate lookups in the form of <em>texture memory</em>. Unfortunately, at least to best of my knowledge, TensorFlow currently does not have an operation to property initialize and use the texture memory and direct table lookups are exceedingly slow.</p>
 <p>It is in this setting that we decided to use <a href="https://en.wikipedia.org/wiki/Chebyshev_polynomials">Chebyshev polynomials</a> to encode the lookup values. Chebyshev polynomials are a valuable tool in numerical analysis and numerical approximation. A disclaimer! We only present the bare minimum needed to advance our discussion and cannot do justice to the large and interesting mathematics of the Chebyshev polynomials.</p>
 <p>A Chebyshev polynomial of the first kind <span class="math"><script type="math/tex">T_i(x)</script></span> is a degree <span class="math"><script type="math/tex">i</script></span> polynomial in variable <span class="math"><script type="math/tex">x</script></span>, defined recursively as</p>
-<span class="math"><script type="math/tex; mode=display">T_0(x) = 1,
+<span class="math"><script type="math/tex; mode=display">T_0(x) = 1, 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_1(x) = x,
+<span class="math"><script type="math/tex; mode=display">T_1(x) = x, 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_n(x) = 2xT_{n-1}(x) - T_{n-2}(x)
+<span class="math"><script type="math/tex; mode=display">T_n(x) = 2xT_{n-1}(x) - T_{n-2}(x) 
 </script></span>
 <p>Few examples,</p>
-<span class="math"><script type="math/tex; mode=display">T_2(x) = 2x^2 - 1,
+<span class="math"><script type="math/tex; mode=display">T_2(x) = 2x^2 - 1, 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_3(x) = 4x^3 - 3x,
+<span class="math"><script type="math/tex; mode=display">T_3(x) = 4x^3 - 3x, 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_4(x) = 8x^4 - 8x^2 + 1,
+<span class="math"><script type="math/tex; mode=display">T_4(x) = 8x^4 - 8x^2 + 1, 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_{10}(x) = 512x^{10} - 1280x^8 + 1120x^6 -400x^4 + 50x^2 - 1.
+<span class="math"><script type="math/tex; mode=display">T_{10}(x) = 512x^{10} - 1280x^8 + 1120x^6 -400x^4 + 50x^2 - 1. 
 </script></span>
 <p>Chebyshev polynomial are orthogonal on the interval [-1,1] with respect to the weighting factor <span class="math"><script type="math/tex">(1-x^2)^{-1/2}</script></span>,</p>
 <span class="math"><script type="math/tex; mode=display">    \int_{-1}^{1} T_n(x)T_m(x)\,\frac{dx}{\sqrt{1-x^2}} =
@@ -913,9 +892,9 @@ pre.editor-colors { overflow: auto; }</style>
 <p><span class="math"><script type="math/tex">T_i</script></span>s are expanded in term of <span class="math"><script type="math/tex">S_i</script></span>s as</p>
 <span class="math"><script type="math/tex; mode=display">T_0 = S_0 = 1
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_1 = S_1
+<span class="math"><script type="math/tex; mode=display">T_1 = S_1 
 </script></span>
-<span class="math"><script type="math/tex; mode=display">T_2 = S_2 - 1
+<span class="math"><script type="math/tex; mode=display">T_2 = S_2 - 1 
 </script></span>
 <span class="math"><script type="math/tex; mode=display">T_3 = S_3  - 3S_1
 </script></span>
