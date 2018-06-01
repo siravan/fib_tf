@@ -1,3 +1,5 @@
+[![DOI](http://joss.theoj.org/papers/10.21105/joss.00719/status.svg)](https://doi.org/10.21105/joss.00719)
+
 # Introduction
 
 **fib_tf** is a Python framework developed on the top of [TensorFlow](http://tensorflow.org) for 2D cardiac electrophysiology simulation. While TensorFlow is primarily designed for machine learning applications, it also provides a general framework for performing multidimensional tensor manipulation. The primary goal of **fib_tf** is to test and assess the suitability of TensorFlow for solving systems of stiff ordinary differential equations (ODE) needed for cardiac modeling.
