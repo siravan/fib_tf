@@ -20,7 +20,7 @@ bibliography: paper.bib
 
 # Summary
 
-`fib_tf` is a Python package developed on the top of the machine-learning library TensorFlow for cardiac electrophysiology simulation [@tensorflow2015-whitepaper]. While TensorFlow is primarily designed for machine learning, it also provides a framework to perform general-purpose multidimensional tensor manipulation.
+`fib_tf` is a Python package developed on top of the machine-learning library TensorFlow for cardiac electrophysiology simulation [@tensorflow2015-whitepaper]. While TensorFlow is primarily designed for machine learning, it also provides a framework to perform general-purpose multidimensional tensor manipulation.
 
 The primary goal of `fib_tf` is to test and assess the suitability of TensorFlow for solving systems of stiff ordinary differential equations (ODE), such as those encountered in cardiac modeling. It mainly targets massively parallel hardware architectures (e.g., Graphics Processing Units).
 
