@@ -76,6 +76,9 @@ class Courtemanche(IonicModel):
             self.init_state_variable(state, '_w_', 0.9992)
             self.init_state_variable(state, '_Ca_up_', 1.488)
 
+            if self.ultra_slow:
+                self.init_state_variable(state, '_us_', 1.0)
+
             # S1 stimulation: vertical along the left side
             if s1:
                 state['V'][:,:25] = 20.0
@@ -184,6 +187,9 @@ class Courtemanche(IonicModel):
             State1['_xr_'] = self.rush_larsen(State['_xr_'], inter['xr_infinity'], inter['tau_xr'], self.δt('_xr_'))
             State1['_xs_'] = self.rush_larsen(State['_xs_'], inter['xs_infinity'], inter['tau_xs'], self.δt('_xs_'))
 
+            if self.ultra_slow:
+                State1['_us_'] = self.rush_larsen(State['_us_'], inter['us_infinity'], inter['tau_us'], self.δt('_us_'))
+
             f_Ca_infinity = tf.reciprocal(1.0 + State['_Ca_i_'] / 0.00035)
             State1['_f_Ca_'] = self.rush_larsen(State['_f_Ca_'], f_Ca_infinity, tau_f_Ca, self.δt('_f_Ca_'))
 
@@ -204,6 +210,9 @@ class Courtemanche(IonicModel):
 
             E_Na = ((R * T) / F) * tf.log(Na_o / State['_Na_i_'])
             i_Na = Cm * g_Na * tf.pow(State['_m_'], 3) * State['_h_'] * State['_j_'] * (V - E_Na)
+            if self.ultra_slow:
+                i_Na *=State['_us_']
+
             i_NaCa = inter['i_NaCaa'] * tf.pow(State['_Na_i_'], 3) - inter['i_NaCab'] * State['_Ca_i_']
             i_B_Na = Cm * g_B_Na * (V - E_Na)
 
@@ -425,6 +434,10 @@ class Courtemanche(IonicModel):
 
         inter['i_Kra'] = (Cm * g_Kr) / (1.0 + mod.exp((V + 15.0) / 22.4))  # * state[_xr_] * (V - E_K)
 
+        inter['tau_us'] = 5000
+        # inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V + 53.1) / 8.75)) + 0.1
+        inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V + 70) / 8.75)) + 0.1
+
         return inter
 
     def update_gates_without_cheby(self, V0, M, H, J, D, F, XI, n):
@@ -578,7 +591,10 @@ class Courtemanche(IonicModel):
         v = self._V.eval()
         return (v - self.min_v) / (self.max_v - self.min_v)
 
+cyclelengths = []
+
 def cl_observer(i, cl):
+    cyclelengths.append([i, cl])
     print('Observer: %d:\t%d' % (i, cl))
 
 if __name__ == '__main__':
@@ -587,49 +603,63 @@ if __name__ == '__main__':
         'height': 512,          # screen height in pixels
         'dt': 0.1,              # integration time step in ms
         'dt_per_plot': 10,      # screen refresh interval in dt unit
-        'diff': 0.809,          # diffusion coefficient
-        'duration': 20000,       # simulation duration in ms
+        'diff': 1.5,            # diffusion coefficient
+        'duration': 20000,      # simulation duration in ms
         'skip': False,          # optimization flag: activate multi-rate
         'cheby': True,          # optimization flag: activate Chebysheb polynomials
         'timeline': False,      # flag to save a timeline (profiler)
         'timeline_name': 'timeline_court.json',
-        'save_graph': False     # flag to save the dataflow graph
+        'save_graph': False,    # flag to save the dataflow graph
+        'ultra_slow': True
     }
 
     m1 = Courtemanche(config)
-    m1.add_hole_to_phase_field(256, 256, 30) # center=(150,200), radius=40
-    m1.add_hole_to_phase_field(256, 256, 250, neg=True)
+    # m1.add_hole_to_phase_field(256, 256, 10) # center=(150,200), radius=40
+    # m1.add_hole_to_phase_field(256, 256, 250, neg=True)
     m1.define()
-    m1.add_pace_op('s2', 'luq', 10.0)
+    # m1.add_pace_op('s2', 'luq', 10.0)
+    m1.add_pace_op('s2', 'left', 10.0)
     m1.cl_observer = cl_observer
 
     # note: change the following line to im = None to run without a screen
     # im = None
     im = Screen(m1.height, m1.width, 'Courtemanche Model')
 
-    s2 = m1.millisecond_to_step(350)     # 300 ms
+    s2 = m1.millisecond_to_step(230)
 
-    data = []
+    # data = []
 
     for i in m1.run(im, keep_state=True, block=False):
         if i % 10 == 0:
             m1.fire_op('slow')
-            m1.fire_op('trend')
-            data.append(m1._Trend.eval())
-        if i == s2:
+            # m1.fire_op('trend')
+            # data.append(m1._Trend.eval())
+        # if i == s2:
+        if i % s2 == 0:
             m1.fire_op('s2')
 
     m2 = Courtemanche(config)
-    m2.add_hole_to_phase_field(256, 256, 100) # center=(150,200), radius=40
-    m2.add_hole_to_phase_field(256, 256, 250, neg=True)
+    m2.add_hole_to_phase_field(256, 256, 100)
+    # m2.add_hole_to_phase_field(256, 256, 250, neg=True)
     m2.define(state=m1.state)
+    m2.add_pace_op('s1', 'left', 10.0)
+    m2.add_pace_op('s2', 'luq', 10.0)
     m2.cl_observer = cl_observer
 
+    s1 = m2.millisecond_to_step(200)
+    s2 = m2.millisecond_to_step(500)
+
     for i in m2.run(im):
+        if i == s1:
+            m2.fire_op('s1')
+        if i == s2:
+            m2.fire_op('s2')
         if i % 10 == 0:
             m2.fire_op('slow')
-            m2.fire_op('trend')
-            data.append(m2._Trend.eval())
+            # m2.fire_op('trend')
+            # data.append(m2._Trend.eval())
 
-    data = np.asarray(data)
-    np.savetxt('vol_na_2.dat', data)
+    # data = np.asarray(data)
+    # np.savetxt('vol_na_2.dat', data)
+
+    np.savetxt('cl.dat', cyclelengths)

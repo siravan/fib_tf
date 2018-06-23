@@ -39,6 +39,7 @@ class IonicModel:
         self._ops = {}
         self.defined = False
         self.dt_per_step = 1
+        self.cl_observer = None
 
     def laplace(self, X):
         """
@@ -196,7 +197,10 @@ class IonicModel:
                     v1 = image[20, self.width//2]
                     if v1 >= 0.5 and v0 < 0.5:
                         cl = (i - last_spike) * self.dt_per_step * self.dt
-                        print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, cl))
+                        if self.cl_observer is None:
+                            print('wavefront reaches the middle top point at %d, cycle length is %d' % (i, cl))
+                        else:
+                            self.cl_observer(i, cl)
                         last_spike = i
                     v0 = v1
 
