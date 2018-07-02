@@ -41,6 +41,7 @@ class BeelerReuter(IonicModel):
         super().__init__(props)
         self.min_v = -90.0    # mV
         self.max_v = 30.0     # mV
+        self.depol = -84.6
 
         # note: the first column for d and f gates is multiplies by 2
         # to reduce the calcium current activation/deactivation gates by
@@ -214,7 +215,7 @@ class BeelerReuter(IonicModel):
         Ts = self.calc_chebyshev_leading(x, 8)
 
         v, α, β = self.calc_alpha_beta_np()
-        
+
         m_inf = self.expand_chebyshev(Ts, v, α[:,1]/(α[:,1]+β[:,1]))
         h_inf = self.expand_chebyshev(Ts, v, α[:,2]/(α[:,2]+β[:,2]))
         m_tau = self.expand_chebyshev(Ts, v, 1.0/(α[:,1]+β[:,1]))

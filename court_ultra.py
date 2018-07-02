@@ -27,6 +27,7 @@ import tensorflow as tf
 import numpy as np
 from screen import Screen
 from ionic import IonicModel
+from functools import partial
 
 class Courtemanche(IonicModel):
     """
@@ -35,10 +36,12 @@ class Courtemanche(IonicModel):
 
     def __init__(self, props):
         super().__init__(props)
-        self.min_v = -100.0    # mV
-        self.max_v = 50.0     # mV
+        self.min_v = -100.0     # mV
+        self.max_v = 50.0       # mV
+        self.depol = -81.0      # mV
         self.chronic = True
         self.fast_states = ['V', '_Na_i_', '_m_', '_h_']
+        self.ultraslow_states = [] # ['_us_']
 
     def init_state_variable(self, state, name, value):
         if name in state:
@@ -77,7 +80,7 @@ class Courtemanche(IonicModel):
             self.init_state_variable(state, '_Ca_up_', 1.488)
 
             if self.ultra_slow:
-                self.init_state_variable(state, '_us_', 1.0)
+                self.init_state_variable(state, '_us_', 0.72)   # steady-state at 500 ms
 
             # S1 stimulation: vertical along the left side
             if s1:
@@ -95,21 +98,25 @@ class Courtemanche(IonicModel):
 
             fasts = []
             slows = []
+            ultraslows = []
             for s in State:
                 if s in self.fast_states:
                     fasts.append(tf.assign(State[s], State1[s]))
+                elif s in self.ultraslow_states:
+                    ultraslows.append(tf.assign(State[s], State1[s]))
                 else:
                     slows.append(tf.assign(State[s], State1[s]))
 
             self._ode_op = tf.group(*fasts)
             self._ops['slow'] = tf.group(*slows)
+            self._ops['ultraslow'] = tf.group(*ultraslows)
             self._V = State['V']  # V is needed by self.image()
             self._State = State
 
             Trend = tf.Variable(np.zeros([2], dtype=np.float32))
             self._ops['trend'] = tf.group(
-                tf.assign(Trend[0], self._V[self.width//2,20]),
-                tf.assign(Trend[1], State['_Na_i_'][self.width//2,20])
+                tf.assign(Trend[0], self._V[self.width-1,self.height-1]),
+                tf.assign(Trend[1], State['_us_'][self.width-1,self.height-1])
             )
             self._Trend = Trend
 
@@ -120,6 +127,8 @@ class Courtemanche(IonicModel):
     def δt(self, name):
         if name in self.fast_states:
             return self.dt
+        if name in self.ultraslow_states:
+            return self.dt * 100
         else:
             return self.dt * 10
 
@@ -211,7 +220,7 @@ class Courtemanche(IonicModel):
             E_Na = ((R * T) / F) * tf.log(Na_o / State['_Na_i_'])
             i_Na = Cm * g_Na * tf.pow(State['_m_'], 3) * State['_h_'] * State['_j_'] * (V - E_Na)
             if self.ultra_slow:
-                i_Na *=State['_us_']
+                i_Na *= State['_us_']
 
             i_NaCa = inter['i_NaCaa'] * tf.pow(State['_Na_i_'], 3) - inter['i_NaCab'] * State['_Ca_i_']
             i_B_Na = Cm * g_B_Na * (V - E_Na)
@@ -434,9 +443,20 @@ class Courtemanche(IonicModel):
 
         inter['i_Kra'] = (Cm * g_Kr) / (1.0 + mod.exp((V + 15.0) / 22.4))  # * state[_xr_] * (V - E_K)
 
-        inter['tau_us'] = 5000
-        # inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V + 53.1) / 8.75)) + 0.1
-        inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V + 70) / 8.75)) + 0.1
+        V_us = -83.0
+        K_us = 23.0
+        alpha_us = 3.125e-6 * (0.5 * (1 - mod.tanh((V - V_us) / K_us)))
+        beta_us = 1.4e-6 * (0.5 * (1 + mod.tanh((V - (V_us + 30)) / K_us)))
+        inter['us_infinity'] = alpha_us / (alpha_us + beta_us)
+        inter['tau_us'] = mod.reciprocal(alpha_us + beta_us)
+
+        # inter['tau_us'] = where(
+        #     V < -60,
+        #     ϵ + 10000.0,
+        #     ϵ + 30000.0
+        # )
+        # # inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V + 53.1) / 8.75)) + 0.1
+        # inter['us_infinity'] = 0.9 / (1.0 + mod.exp((V - (-75)) / 8.75)) + 0.1
 
         return inter
 
@@ -591,11 +611,11 @@ class Courtemanche(IonicModel):
         v = self._V.eval()
         return (v - self.min_v) / (self.max_v - self.min_v)
 
-cyclelengths = []
+data = [0,0]
 
-def cl_observer(i, cl):
-    cyclelengths.append([i, cl])
-    print('Observer: %d:\t%d' % (i, cl))
+def cl_observer(cyclelengths, i0, i, cl):
+    cyclelengths.append([i+i0, cl])
+    print('%d:\t%d\t%.5f\t%.5f' % (i+i0, cl, data[0], data[1]))
 
 if __name__ == '__main__':
     config = {
@@ -604,7 +624,7 @@ if __name__ == '__main__':
         'dt': 0.1,              # integration time step in ms
         'dt_per_plot': 10,      # screen refresh interval in dt unit
         'diff': 1.5,            # diffusion coefficient
-        'duration': 20000,      # simulation duration in ms
+        'duration': 500000,     # simulation duration in ms
         'skip': False,          # optimization flag: activate multi-rate
         'cheby': True,          # optimization flag: activate Chebysheb polynomials
         'timeline': False,      # flag to save a timeline (profiler)
@@ -614,50 +634,49 @@ if __name__ == '__main__':
     }
 
     m1 = Courtemanche(config)
-    # m1.add_hole_to_phase_field(256, 256, 10) # center=(150,200), radius=40
-    # m1.add_hole_to_phase_field(256, 256, 250, neg=True)
+    m1.add_hole_to_phase_field(m1.width//2, m1.height//2, 50)
+    # m1.add_hole_to_phase_field(m1.width//2, m1.height//2, m1.width//2-6, neg=True)
     m1.define()
-    # m1.add_pace_op('s2', 'luq', 10.0)
-    m1.add_pace_op('s2', 'left', 10.0)
-    m1.cl_observer = cl_observer
+    m1.add_pace_op('s2', 'luq', 10.0)
+    cyclelengths = []
+    m1.cl_observer = partial(cl_observer, cyclelengths, 0)
 
     # note: change the following line to im = None to run without a screen
     # im = None
     im = Screen(m1.height, m1.width, 'Courtemanche Model')
 
-    s2 = m1.millisecond_to_step(230)
+    s2 = m1.millisecond_to_step(300)
 
     # data = []
 
     for i in m1.run(im, keep_state=True, block=False):
         if i % 10 == 0:
             m1.fire_op('slow')
-            # m1.fire_op('trend')
-            # data.append(m1._Trend.eval())
-        # if i == s2:
-        if i % s2 == 0:
+        if i % 100 == 0:
+            m1.fire_op('ultraslow')
+            m1.fire_op('trend')
+            data = m1._Trend.eval()
+        if i == s2:
             m1.fire_op('s2')
 
+    # config['duration'] = m1.duration // 2
+    config['duration'] = m1.duration
     m2 = Courtemanche(config)
-    m2.add_hole_to_phase_field(256, 256, 100)
-    # m2.add_hole_to_phase_field(256, 256, 250, neg=True)
+    m2.add_hole_to_phase_field(m1.width//2, m1.height//2, 100)
+    # m2.add_hole_to_phase_field(m1.width//2, m1.height//2, m1.width//2-6, neg=True)
     m2.define(state=m1.state)
-    m2.add_pace_op('s1', 'left', 10.0)
-    m2.add_pace_op('s2', 'luq', 10.0)
-    m2.cl_observer = cl_observer
+    m2.cl_observer = partial(cl_observer, cyclelengths,
+                             m1.millisecond_to_step(m1.duration))
 
-    s1 = m2.millisecond_to_step(200)
-    s2 = m2.millisecond_to_step(500)
-
-    for i in m2.run(im):
-        if i == s1:
-            m2.fire_op('s1')
-        if i == s2:
-            m2.fire_op('s2')
+    for i in m2.run(im, keep_state=True, block=False):
         if i % 10 == 0:
             m2.fire_op('slow')
-            # m2.fire_op('trend')
-            # data.append(m2._Trend.eval())
+        if i % 100 == 0:
+            m2.fire_op('ultraslow')
+            m2.fire_op('trend')
+            data = m2._Trend.eval()
+
+    np.save('state', m2.state)  # save the state as a npy file
 
     # data = np.asarray(data)
     # np.savetxt('vol_na_2.dat', data)

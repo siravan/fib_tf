@@ -41,11 +41,13 @@ class IonicModel:
         self.dt_per_step = 1
         self.cl_observer = None
 
-    def laplace(self, X):
+    def laplace(self, X0):
         """
             laplace computes the 2D Laplacian of X directly and without using conv
             it also adds the phase field correction if self.phase is defined
         """
+        paddings = tf.constant([[1,1], [1,1]])
+        X = tf.pad(X0, paddings, 'REFLECT')
         l = (X[:-2,1:-1] + X[2:,1:-1] + X[1:-1,:-2] + X[1:-1,2:] +
              0.5 * (X[:-2,:-2] + X[2:,:-2] + X[:-2,2:] + X[2:,2:]) -
              6 * X[1:-1,1:-1])
@@ -55,15 +57,24 @@ class IonicModel:
                 self.ϕ = tf.Variable(self.phase, name='phi')
             l += self.phase_field(X)
 
-        paddings = tf.constant([[1,1], [1,1]])
-        return tf.pad(l, paddings, 'CONSTANT', name='laplacian')
+        return l
+
+        # grad = tf.pad(l, paddings, 'CONSTANT', name='laplacian')
+        #return grad
+        # return tf.where(
+        #     tf.is_nan(grad),
+        #     tf.zeros_like(grad),
+        #     grad
+        # )
 
     def phase_field(self, X):
         """
             phase_field computes the 2D phase field correction
             it assumes self.ϕ exists and is the same shape as X
         """
-        ϕ = self.ϕ
+        paddings = tf.constant([[1,1], [1,1]])
+        ϕ = tf.pad(self.ϕ, paddings, 'REFLECT')
+        # ϕ = self.ϕ
         f = ((X[2:,1:-1] - X[:-2,1:-1]) * (ϕ[2:,1:-1] - ϕ[:-2,1:-1]) +
              (X[1:-1,2:] - X[1:-1,:-2]) * (ϕ[1:-1,2:] - ϕ[1:-1:,:-2])
              ) / (4 * ϕ[1:-1,1:-1])
@@ -138,13 +149,13 @@ class IonicModel:
         elif loc == 'bottom':
             s[-5:,:] = v
         elif loc == 'luq':
-            s[:self.height//2, :self.width//2] = v
+            s[1:self.height//2, 1:self.width//2] = v
         elif loc == 'llq':
-            s[self.height//2:, :self.width//2] = v
+            s[self.height//2:-1, 1:self.width//2] = v
         elif loc == 'ruq':
-            s[:self.height//2, self.width//2:] = v
+            s[1:self.height//2, self.width//2:-1] = v
         elif loc == 'rlq':
-            s[self.height//2:, self.width//2:] = v
+            s[self.height//2:-1, self.width//2:-1] = v
         else:
             print('undefined pace location')
         self._ops[name] = self.pot().assign(tf.maximum(self.pot(), s))
@@ -183,6 +194,7 @@ class IonicModel:
             v0 = self.min_v
             last_spike = 0
             self.samples = int(self.duration / (self.dt_per_step * self.dt))
+            # not_nan = True
 
             # the main loop!
             for i in range(self.samples):
@@ -191,6 +203,11 @@ class IonicModel:
                 # draw a frame every 1 ms
                 if im and i % int(self.dt_per_plot / self.dt_per_step) == 0:
                     image = self.image()
+                    # if not np.isfinite(np.sum(image)):
+                    #     if not_nan:
+                    #         print("Error! NAN detected for the first time")
+                    #         not_nan = False
+                    #     break
                     if self.phase is not None:
                         image *= self.phase
                     im.imshow(image)

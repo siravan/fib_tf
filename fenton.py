@@ -41,6 +41,7 @@ class Fenton4v(IonicModel):
         IonicModel.__init__(self, props)
         self.min_v = 0.0
         self.max_v = 1.0
+        self.depol = 0.0
 
     def differentiate(self, U, V, W, S):
         """ the state differentiation for the 4v model """

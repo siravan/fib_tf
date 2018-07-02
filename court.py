@@ -35,8 +35,9 @@ class Courtemanche(IonicModel):
 
     def __init__(self, props):
         super().__init__(props)
-        self.min_v = -100.0    # mV
-        self.max_v = 50.0     # mV
+        self.min_v = -100.0     # mV
+        self.max_v = 50.0       # mV
+        self.depol = -81.0      # mV
         self.chronic = True
         self.fast_states = ['V', '_Na_i_', '_m_', '_h_']
 
