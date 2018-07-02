@@ -445,8 +445,8 @@ class Courtemanche(IonicModel):
 
         V_us = -83.0
         K_us = 23.0
-        alpha_us = 3.125e-6 * (0.5 * (1 - mod.tanh((V - V_us) / K_us)))
-        beta_us = 1.4e-6 * (0.5 * (1 + mod.tanh((V - (V_us + 30)) / K_us)))
+        alpha_us = 1e-5 * (0.5 * (1 - mod.tanh((V - V_us) / K_us)))
+        beta_us = 3.3e-6 * (0.5 * (1 + mod.tanh((V - (V_us + 30)) / K_us)))
         inter['us_infinity'] = alpha_us / (alpha_us + beta_us)
         inter['tau_us'] = mod.reciprocal(alpha_us + beta_us)
 
