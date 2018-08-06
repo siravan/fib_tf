@@ -41,7 +41,6 @@ class Courtemanche(IonicModel):
         self.depol = -81.0      # mV
         self.chronic = True
         self.fast_states = ['V', '_Na_i_', '_m_', '_h_']
-        self.ultraslow_states = [] # ['_us_']
 
     def init_state_variable(self, state, name, value):
         if name in state:
@@ -98,26 +97,26 @@ class Courtemanche(IonicModel):
 
             fasts = []
             slows = []
-            ultraslows = []
+
+            # for s in State:
+            #     if s in self.fast_states:
+            #         fasts.append(tf.assign(State[s], State1[s]))
+            #     else:
+            #         slows.append(tf.assign(State[s], State1[s]))
+
             for s in State:
-                if s in self.fast_states:
-                    fasts.append(tf.assign(State[s], State1[s]))
-                elif s in self.ultraslow_states:
-                    ultraslows.append(tf.assign(State[s], State1[s]))
-                else:
-                    slows.append(tf.assign(State[s], State1[s]))
+                fasts.append(tf.assign(State[s], State1[s]))
 
             self._ode_op = tf.group(*fasts)
             self._ops['slow'] = tf.group(*slows)
-            self._ops['ultraslow'] = tf.group(*ultraslows)
             self._V = State['V']  # V is needed by self.image()
             self._State = State
             self._Inter = inter
 
             Trend = tf.Variable(np.zeros([2], dtype=np.float32))
             self._ops['trend'] = tf.group(
-                tf.assign(Trend[0], self._V[self.width//2,self.height//8]),
-                tf.assign(Trend[1], State['_us_'][self.width//2,self.height//8])
+                tf.assign(Trend[0], self._V[self.width//2,self.height//8])
+                # tf.assign(Trend[1], State['_us_'][self.width//2,self.height//8])
             )
             self._Trend = Trend
 
@@ -126,12 +125,11 @@ class Courtemanche(IonicModel):
         return g + Rate * dt
 
     def δt(self, name):
-        if name in self.fast_states:
-            return self.dt
-        if name in self.ultraslow_states:
-            return self.dt * 100
-        else:
-            return self.dt * 10
+        return self.dt
+        # if name in self.fast_states:
+        #     return self.dt
+        # else:
+        #     return self.dt * 10
 
     def solve(self, State):
         """ Explicit Euler ODE solver """
@@ -446,8 +444,8 @@ class Courtemanche(IonicModel):
 
         V_us = -83.0
         K_us = 23.0
-        alpha_us = 2*1e-5 * (0.5 * (1 - mod.tanh((V - V_us) / K_us)))
-        beta_us = 2*3.3e-6 * (0.5 * (1 + mod.tanh((V - (V_us + 30)) / K_us)))
+        alpha_us = 3e-5 * (0.5 * (1 - mod.tanh((V - V_us) / K_us)))
+        beta_us = 1e-5 * (0.5 * (1 + mod.tanh((V - (V_us + 30)) / K_us)))
         inter['us_infinity'] = alpha_us / (alpha_us + beta_us)
         inter['tau_us'] = mod.reciprocal(alpha_us + beta_us)
 
@@ -464,14 +462,70 @@ class Courtemanche(IonicModel):
         v = self._V.eval()
         return (v - self.min_v) / (self.max_v - self.min_v)
 
-V = 0
-us = 1.0
-mean_us_infinity = 0
-mean_tau_us = 100000
+def cl_observer(m, cyclelengths, i0, i, cl):
+    na = m._State['_Na_i_'].eval()
+    mean_na = np.average(na, weights=m.phase)
 
-def cl_observer(cyclelengths, i0, i, cl):
-    cyclelengths.append([i+i0, cl])
-    print('%d:\t%d\t%.2f\t%.5f\t%.5f\t%.0f' % (i+i0, cl, V, us, mean_us_infinity, mean_tau_us))
+    us_infinity = m._State['_f_Ca_'].eval()
+    mean_ca = np.average(us_infinity, weights=m.phase)
+
+    if m.ultra_slow:
+        us = m._State['_us_'].eval()
+        mean_us = np.average(us, weights=m.phase)
+
+        us_infinity = m._Inter['us_infinity'].eval()
+        mean_us_infinity = np.average(us_infinity, weights=m.phase)
+
+        tau_us = m._Inter['tau_us'].eval()
+        mean_tau_us = np.average(tau_us, weights=m.phase)
+
+        cyclelengths.append([i0+i, cl, mean_na, mean_ca, mean_us, mean_us_infinity, mean_tau_us])
+        print('%d:\t%d\t%.3f\t%.3f\t%.5f\t%.5f\t%.0f' % (i+i0, cl, mean_na, mean_ca, mean_us, mean_us_infinity, mean_tau_us))
+    else:
+        cyclelengths.append([i0+i, cl, mean_na, mean_ca])
+        print('%d:\t%d\t%.3f\t%.3f' % (i+i0, cl, mean_na, mean_ca))
+
+
+def run_small(config, im, cyclelengths, radius=50, i0=0):
+    m = Courtemanche(config)
+    m.add_hole_to_phase_field(m.width//2, m.height//2, radius)
+    m.add_hole_to_phase_field(m.width//2, m.height//2, m.width//2-6, neg=True)
+    m.define()
+    m.add_pace_op('s2', 'luq', 10.0)
+    m.cl_observer = partial(cl_observer, m, cyclelengths, i0)
+
+    s2 = m.millisecond_to_step(300)
+
+    for i in m.run(im, keep_state=True, block=False):
+        if i % 10 == 0:
+            m.fire_op('slow')
+        if i == s2:
+            m.fire_op('s2')
+        if i % 5000 == 0:
+            image = m.image()
+            phase = m.phase
+            # cutoff -55 mV
+            ρ = np.sum(image[phase > 1e-3] < 0.2) / np.sum(phase > 1e-3)
+            print('ρ = %.4f' % ρ)
+
+    np.save('state_small', m.state)  # save the state as a npy file
+    return m.state
+
+def run_large(config, im, cyclelengths, radius, i0=0):
+    m = Courtemanche(config)
+    m.add_hole_to_phase_field(m.width//2, m.height//2, radius)
+    # m.add_hole_to_phase_field(m1.width//2, m1.height//2, m1.width//2-6, neg=True)
+    state = np.load('state_small.npy').item(0)
+    m.define(state=state)
+    m.cl_observer = partial(cl_observer, m, cyclelengths, i0)
+
+    for i in m.run(im, keep_state=True, block=False):
+        if i % 10 == 0:
+            m.fire_op('slow')
+
+    np.save('state_large', m.state)  # save the state as a npy file
+    return m.state
+
 
 if __name__ == '__main__':
     config = {
@@ -480,75 +534,26 @@ if __name__ == '__main__':
         'dt': 0.1,              # integration time step in ms
         'dt_per_plot': 10,      # screen refresh interval in dt unit
         'diff': 1.5,            # diffusion coefficient
-        'duration': 10000,      # simulation duration in ms
+        'duration': 10000,       # simulation duration in ms
         'skip': False,          # optimization flag: activate multi-rate
         'cheby': True,          # optimization flag: activate Chebysheb polynomials
         'timeline': False,      # flag to save a timeline (profiler)
         'timeline_name': 'timeline_court.json',
         'save_graph': False,    # flag to save the dataflow graph
-        'ultra_slow': True
+        'ultra_slow': False
     }
-
-    m1 = Courtemanche(config)
-    m1.add_hole_to_phase_field(m1.width//2, m1.height//2, 50)
-    # m1.add_hole_to_phase_field(m1.width//2, m1.height//2, m1.width//2-6, neg=True)
-    m1.define()
-    m1.add_pace_op('s2', 'luq', 10.0)
-    cyclelengths = []
-    m1.cl_observer = partial(cl_observer, cyclelengths, 0)
 
     # note: change the following line to im = None to run without a screen
     # im = None
-    im = Screen(m1.height, m1.width, 'Courtemanche Model')
+    im = Screen(config['height'], config['width'], 'Courtemanche Model')
+    cyclelengths = []
 
-    s2 = m1.millisecond_to_step(300)
-
-    # data = []
-
-    for i in m1.run(im, keep_state=True, block=False):
-        if i % 10 == 0:
-            m1.fire_op('slow')
-        if i % 100 == 0:
-            m1.fire_op('ultraslow')
-        if i % 1000 == 0:
-            m1.fire_op('trend')
-            trend = m1._Trend.eval()
-            V = trend[0]
-            us = trend[1]
-            us_infinity = m1._Inter['us_infinity'].eval()
-            mean_us_infinity = np.average(us_infinity, weights=m1.phase)
-            tau_us = m1._Inter['tau_us'].eval()
-            mean_tau_us = np.average(tau_us, weights=m1.phase)
-        if i == s2:
-            m1.fire_op('s2')
-
-    # config['duration'] = m1.duration // 2
-    config['duration'] = m1.duration
-    m2 = Courtemanche(config)
-    m2.add_hole_to_phase_field(m1.width//2, m1.height//2, 100)
-    # m2.add_hole_to_phase_field(m1.width//2, m1.height//2, m1.width//2-6, neg=True)
-    m2.define(state=m1.state)
-    m2.cl_observer = partial(cl_observer, cyclelengths,
-                             m1.millisecond_to_step(m1.duration))
-
-    for i in m2.run(im, keep_state=True, block=False):
-        if i % 10 == 0:
-            m2.fire_op('slow')
-        if i % 100 == 0:
-            m2.fire_op('ultraslow')
-        if i % 1000 == 0:
-            m2.fire_op('trend')
-            trend = m2._Trend.eval()
-            V = trend[0]
-            us = trend[1]
-            us_infinity = m2._Inter['us_infinity'].eval()
-            mean_us_infinity = np.average(us_infinity, weights=m2.phase)
-            tau_us = m2._Inter['tau_us'].eval()
-            mean_tau_us = np.average(tau_us, weights=m2.phase)
-
-    np.save('state', m2.state)  # save the state as a npy file
+    run_small(config, im, cyclelengths, radius=10)
+    # i0 = int(config['duration'] / config['dt'])
+    # run_large(config, im, cyclelengths, 100, i0)
+    # im.save('100.png')
 
     # data = np.asarray(data)
     # np.savetxt('vol_na_2.dat', data)
 
-    np.savetxt('cl.dat', cyclelengths)
+    # np.savetxt('test.dat', cyclelengths)

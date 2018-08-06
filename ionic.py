@@ -119,8 +119,8 @@ class IonicModel:
         """
         #return tf.clip_by_value(g_inf - (g_inf - g) * tf.exp(-dt/g_tau), 0.0,
         #                        1.0, name=name)
-        return tf.clip_by_value(g + (g - g_inf) * tf.expm1(-dt/g_tau), 0.0,
-                                1.0, name=name)
+        return tf.clip_by_value(g + (g - g_inf) * tf.expm1(-dt/g_tau), 0.00001,
+                                0.99999, name=name)
 
     def add_pace_op(self, name, loc, v):
         """

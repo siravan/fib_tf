@@ -6,6 +6,7 @@
 from dll import _bind
 from ctypes import *
 import numpy as np
+import PIL.Image
 
 # in linux, we can simply use the following code instead of importing from dll
 #
@@ -112,6 +113,8 @@ class Screen:
         self._texture = self._CreateTexture(self._renderer,
             SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height)
 
+        self.image = None
+
     def destroy(self):
         self._DestroyTexture(self._texture)
         self._DestroyRenderer(self._renderer)
@@ -135,7 +138,7 @@ class Screen:
             a = image
         elif image.dtype == np.float32 or image.dtype == np.float64:
             if len(image.shape) == 2 or image.shape[2] == 1:
-                a = np.uint8(np.squeeze(image) * 255) * 0x010101
+                a = np.uint8(np.squeeze(image) * 255) * 0x010101 + 0xff000000
             elif x.shape[2] == 3:
                 a = np.c_uint32(np.uint8(image[:,:,2]*255) +
                                 np.uint8(image[:,:,1]*255) * 256 +
@@ -144,6 +147,8 @@ class Screen:
                 raise TypeError('float ndarrays to imshow should be of form MxNx1 or MxNx3')
         else:
             raise TypeError('ndarrays to imshow should be of type unit32, int32, float32, or float64')
+
+        self.image = a  # save the buffer to save to file
 
         pixels = a.ctypes.data_as(POINTER(c_float))
         self._UpdateTexture(self._texture, None, pixels, sizeof(c_uint32) * self._width)
@@ -173,3 +178,9 @@ class Screen:
         while not self.peek():
             pass
         self.destroy()
+
+    def save(self, name):
+        if self.image is not None:
+            PIL.Image.fromarray(self.image, mode='RGBA').save(name, 'png')
+        else:
+            print('No suitable image to save!')
