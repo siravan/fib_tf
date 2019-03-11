@@ -25,7 +25,7 @@
 
 import tensorflow as tf
 import numpy as np
-from screen import Screen
+# from screen import Screen
 from ionic import IonicModel
 
 class Fenton4v(IonicModel):
@@ -166,14 +166,22 @@ if __name__ == '__main__':
     }
     model = Fenton4v(config)
 
-    # model.add_hole_to_phase_field(256, 256, 50.0)
+    model.add_hole_to_phase_field(256, 256, 30)
     model.define()
     model.add_pace_op('s2', 'luq', 1.0)
     # note: change the following line to im = None to run without a screen
-    im = Screen(model.height, model.width, 'Fenton 4v Model')
+    #im = Screen(model.height, model.width, 'Fenton 4v Model')
+    im = None
 
     s2 = model.millisecond_to_step(210)     # 210 ms
+    ds = model.millisecond_to_step(10)
+    n = int(model.duration / 10.0)
+    cube = np.zeros([n, model.height, model.width], dtype=np.float32)
 
     for i in model.run(im):
         if i == s2:
             model.fire_op('s2')
+        if i % ds == 0:
+            cube[i//ds,:,:] = model.image() * model.phase
+
+    np.save('cube', cube)

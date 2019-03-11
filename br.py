@@ -25,7 +25,7 @@
 
 import tensorflow as tf
 import numpy as np
-from screen import Screen
+# from screen import Screen
 from ionic import IonicModel
 
 class BeelerReuter(IonicModel):
@@ -147,11 +147,15 @@ class BeelerReuter(IonicModel):
             ENa = 50.0 + D_Na
             C_m = 1.0
 
-            k = tf.exp(0.04 * V0, name='k')
-            iK1 = (C_K1 * (0.35 *(4*(29.64*k - 1) / ( 69.41*k*k + 8.33*k) +
-                        0.2 * ((V0 + 23) / (1 - 0.3985 / k )))))
+            iK1 = 0.35 * (4*(tf.exp(0.04*(V0+85))-1)/(tf.exp(0.08*(V0+53)) +
+                tf.exp(0.04*(V0+53))) + 0.2 * ((V0+23.0) / (1.0-tf.exp(-0.04*(V0+23)))))
 
-            ix1 = (C_x1 * XI * 0.8 * (21.76*k - 1) / (4.055*k))
+            # k = tf.exp(0.04 * V0, name='k')
+            # iK1 = (C_K1 * (0.35 *(4*(29.64*k - 1) / ( 69.41*k*k + 8.33*k) +
+            #             0.2 * ((V0 + 23) / (1 - 0.3985 / k )))))
+
+            ix1 = XI * 0.8 * (tf.exp(0.04*(V0+77))-1) / tf.exp(0.04*(V0+35))
+            # ix1 = (C_x1 * XI * 0.8 * (21.76*k - 1) / (4.055*k))
 
             iNa = C_Na * (g_Na*M*M*M*H*J + g_NaC) * (V0 - ENa)
 
@@ -361,11 +365,18 @@ if __name__ == '__main__':
     model.add_pace_op('s2', 'luq', 10.0)
 
     # note: change the following line to im = None to run without a screen
-    # im = None
-    im = Screen(model.height, model.width, 'Beeler-Reuter Model')
+    im = None
+    # im = Screen(model.height, model.width, 'Beeler-Reuter Model')
 
     s2 = model.millisecond_to_step(300)     # 300 ms
+    ds = model.millisecond_to_step(10)
+    n = int(model.duration / 10.0)
+    cube = np.zeros([n, model.height, model.width], dtype=np.float32)
 
     for i in model.run(im):
         if i == s2:
             model.fire_op('s2')
+        if i % ds == 0:
+            cube[i//ds,:,:] = model.image() * model.phase
+
+    np.save('cube', cube)
